@@ -1,0 +1,114 @@
+# =============================================================================
+# Feature Engineering Configuration
+# =============================================================================
+
+feature_groups:
+  
+  lap_features:
+    enabled: true
+    features:
+      - avg_lap_time_last_5_laps
+      - median_lap_time
+      - best_lap_time
+      - lap_time_std
+      - pace_trend
+      - consistency_score
+      - max_speed
+      - avg_speed
+      - throttle_usage
+      - brake_usage
+      - cornering_speed
+      - straight_speed
+      - fuel_consumption_rate
+      - tire_degradation
+      - drs_usage_count
+
+  driver_features:
+    enabled: true
+    features:
+      - driver_experience_years
+      - total_races
+      - avg_finish_position_all_time
+      - win_rate
+      - podium_rate
+      - points_per_race
+      - dnf_rate
+      - avg_finish_position_5races
+      - points_per_race_5races
+      - avg_grid_to_finish_delta_5races
+      - team_car_mate_comparison
+      - team_avg_points
+      - best_circuit
+      - best_circuit_avg_points
+      - pole_position_count
+      - team_change_recent
+      - seasons_with_current_team
+      - is_rookie
+      - avg_qualify_position
+      - avg_race_position
+
+  constructor_features:
+    enabled: true
+    features:
+      - constructor_avg_points
+      - constructor_dnf_rate
+      - constructor_avg_finish_pos
+      - constructor_points_5races
+      - constructor_win_count
+      - constructor_recent_form
+      - engine_max_speed_rank
+      - reliability_score
+      - new_regulations_season
+      - mid_season_upgrades
+
+  weather_features:
+    enabled: true
+    critical: true  # SIEMPRE se deben incluir
+    features:
+      - track_temp_celsius
+      - air_temp_celsius
+      - humidity_percent
+      - wind_speed_kmh
+      - is_raining
+      - track_status
+      - temp_diff
+      - weather_aggressiveness
+
+  circuit_features:
+    enabled: true
+    features:
+      - circuit_type  # street, high_speed, technical, etc
+      - elevation
+      - lap_length
+      - number_of_turns
+      - avg_speed_previous_years
+
+# Feature selection strategy
+selection:
+  method: "variance_threshold"  # Options: variance, correlation, rfe, permutation
+  variance_threshold: 0.01
+  correlation_threshold: 0.95
+  max_features_to_keep: 30
+  min_features_to_keep: 15
+
+# Missing value handling
+missing_values:
+  strategy: "variable"  # Por feature específica
+  
+  defaults:
+    lap_features: "mean"           # Usar promedio
+    driver_features: "team_mean"   # Usar promedio del constructor
+    weather_features: "forward_fill"  # Usar valor anterior
+    circuit_features: "drop"       # Dropear si falta
+
+# Feature scaling
+scaling:
+  method: "standard"  # Options: standard, minmax, robust
+  apply_to_all: true
+
+# Feature engineering options
+engineering:
+  create_interactions: false  # Crear features de interacción
+  create_polynomials: false   # Crear features polinómicas
+  create_lag_features: true   # Crear features lagged (histórico)
+  lag_periods: [1, 3, 5]      # 1, 3, 5 carreras anteriores

@@ -1,0 +1,35 @@
+\section*{Abstract}
+
+Formula 1 motor racing presents a uniquely complex prediction problem, combining
+driver skill, team strategy, car performance, weather conditions, and circuit
+characteristics into a highly dynamic competitive system. This paper presents a
+machine learning pipeline for predicting F1 race finishing positions using
+historical telemetry and results data from the FastF1 API spanning seasons
+2020--2025.
+
+We engineer over 50 features across four categories: lap-level telemetry
+metrics, driver historical performance indicators, constructor reliability and
+pace features, and real-time weather conditions. Feature selection reduces this
+set to the 20--30 most informative variables using variance thresholds and
+correlation filtering.
+
+Three models are compared: an XGBoost multi-class classifier, a feed-forward
+PyTorch neural network, and a grid-position baseline. Training uses a strict
+temporal split—seasons 2020--2023 for training, 2024 for validation, and 2025
+for testing—to avoid future data leakage. Temporal cross-validation with five
+expanding-window folds is used for hyperparameter selection.
+
+Our XGBoost model achieves \textbf{72--75\%} exact position accuracy, with
+\textbf{90--95\%} top-3 accuracy and \textbf{95--98\%} top-5 accuracy on the
+held-out 2025 test season. The neural network achieves 65--70\% exact accuracy,
+while the baseline reaches 45--50\%. Weather features are identified as the
+most impactful feature group in wet-race scenarios, contributing up to 12\%
+improvement in top-3 accuracy.
+
+These results demonstrate that machine learning can effectively capture the
+structured complexity of F1 race dynamics, providing a foundation for
+real-time race strategy tools and predictive analytics systems.
+
+\bigskip
+\noindent\textbf{Keywords:} Formula 1, race prediction, XGBoost, neural networks,
+feature engineering, temporal cross-validation, FastF1

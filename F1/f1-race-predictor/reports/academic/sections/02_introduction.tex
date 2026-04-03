@@ -1,0 +1,49 @@
+\section{Introduction}
+
+Formula 1 is the pinnacle of motorsport, combining engineering excellence with
+driver skill in a high-stakes global competition. Each race involves 20 drivers
+from 10 constructor teams competing across circuits with varying characteristics,
+weather conditions, and strategic possibilities. The outcome of any given race
+depends on a complex interaction of factors: qualifying performance, race pace,
+tire strategy, pit stop timing, mechanical reliability, and driver decision-making
+under pressure.
+
+Predicting race outcomes has significant value for multiple stakeholders: teams
+use predictive models to optimize strategy, broadcasters enhance viewer experience
+with real-time probability estimates, and analysts study the relative importance
+of car versus driver performance. Despite this value, public research on F1
+outcome prediction remains limited compared to other sports.
+
+\subsection{Research Questions}
+
+This paper addresses three primary research questions:
+
+\begin{enumerate}
+    \item Can machine learning models significantly outperform a grid-position
+          baseline for predicting F1 race finishing positions?
+    \item Which feature categories (lap telemetry, driver history, constructor
+          form, weather) contribute most to prediction accuracy?
+    \item Does temporal validation reveal systematic degradation in model
+          performance as the season progresses?
+\end{enumerate}
+
+\subsection{Contributions}
+
+Our primary contributions are:
+\begin{itemize}
+    \item A complete, reproducible ML pipeline using the FastF1 API for
+          automated data extraction.
+    \item A multi-category feature engineering framework with 50+ domain-specific
+          features.
+    \item Temporal cross-validation methodology that respects the sequential nature
+          of racing seasons.
+    \item Systematic comparison of gradient boosting, deep learning, and baseline
+          approaches on the same dataset and evaluation protocol.
+\end{itemize}
+
+\subsection{Paper Structure}
+
+Section~\ref{sec:methodology} describes data sources, feature engineering, model
+architectures, and evaluation protocols. Section~\ref{sec:results} presents
+quantitative results and feature importance analysis. Section~\ref{sec:conclusions}
+summarizes findings and discusses directions for future work.

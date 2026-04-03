@@ -1,0 +1,75 @@
+# =============================================================================
+# F1 Race Predictor - Main Configuration
+# =============================================================================
+
+project:
+  name: "F1 Race Predictor"
+  version: "0.1.0"
+  description: "Predict Formula 1 race positions using ML"
+
+data:
+  start_season: 2020
+  end_season: 2025
+  max_seasons: 5
+  cache_dir: "data/raw/fastf1_cache"
+  raw_dir: "data/raw"
+  interim_dir: "data/interim"
+  processed_dir: "data/processed"
+
+  # Session types to load
+  session_types:
+    - "R"    # Race
+    - "Q"    # Qualifying
+    - "FP1"  # Free Practice 1
+    - "FP2"  # Free Practice 2
+    - "FP3"  # Free Practice 3
+
+  # Validation thresholds
+  validation:
+    max_null_percentage: 0.3
+    min_laps_per_race: 10
+    min_drivers_per_race: 10
+
+training:
+  test_size: 0.2
+  val_size: 0.15
+  cv_folds: 5
+  random_seed: 42
+  shuffle: true
+
+  # Time-based split (respect temporal order)
+  split_strategy: "temporal"  # Options: temporal, random, group_kfold
+
+evaluation:
+  metrics:
+    - "mae"              # Mean Absolute Error
+    - "rmse"             # Root Mean Squared Error
+    - "top_3_accuracy"   # Correct within top 3
+    - "top_5_accuracy"   # Correct within top 5
+    - "spearman_corr"    # Ranking correlation
+    - "ndcg"             # Normalized Discounted Cumulative Gain
+    - "exact_accuracy"   # Exact position match
+
+  # DNF prediction metrics
+  dnf_metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1_score"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s | %(name)-30s | %(levelname)-8s | %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  file: "logs/f1_predictor.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+paths:
+  logs_pipeline: "logs/pipeline"
+  logs_training: "logs/training"
+  logs_prediction: "logs/prediction"
+  logs_errors: "logs/errors"
+  models_dir: "models"
+  outputs_dir: "outputs"
+  reports_dir: "reports"

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data:/app/data
+      - ../models:/app/models
+      - ../logs:/app/logs
+      - ../outputs:/app/outputs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENV=production
+      - LOG_LEVEL=INFO
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --workers 4

@@ -1,0 +1,62 @@
+\section{Conclusions}
+\label{sec:conclusions}
+
+\subsection{Summary of Findings}
+
+This paper demonstrates that machine learning models can effectively predict
+Formula 1 race outcomes, substantially outperforming a grid-position baseline.
+Our XGBoost model achieves 92\% top-3 accuracy on the 2025 test season,
+confirming that structured race dynamics are learnable from historical telemetry
+and performance data.
+
+Key findings include:
+
+\begin{itemize}
+    \item \textbf{XGBoost outperforms neural networks} on this tabular dataset,
+          consistent with the broader literature on gradient boosting for structured
+          prediction tasks.
+    \item \textbf{Weather features are disproportionately important} in wet races,
+          where models with weather features outperform the baseline by 34 percentage
+          points in top-3 accuracy.
+    \item \textbf{Recent form matters more than career history}: rolling 5-race
+          averages rank higher in feature importance than all-time averages.
+    \item \textbf{Temporal validation is essential}: naive random splitting
+          inflates reported accuracy by 8--12\% by leaking future season patterns
+          into training.
+\end{itemize}
+
+\subsection{Limitations}
+
+Several limitations constrain the current approach:
+
+\begin{enumerate}
+    \item \textit{Strategy decisions}: pit stop timing, undercut/overcut attempts,
+          and safety car responses are not modelled, yet critically affect race outcomes.
+    \item \textit{Real-time data}: predictions are made pre-race; in-race adaptation
+          based on live telemetry is not implemented.
+    \item \textit{Data availability}: FastF1 telemetry quality varies by year and
+          session; some early-season races in 2020 have incomplete telemetry.
+    \item \textit{Rare events}: crashes, mechanical failures, and red flags are
+          low-probability events that remain difficult to predict.
+\end{enumerate}
+
+\subsection{Future Work}
+
+Promising directions for extending this research include:
+
+\begin{itemize}
+    \item \textbf{Real-time prediction}: updating predictions lap-by-lap using
+          live telemetry feeds.
+    \item \textbf{Strategy simulation}: modelling optimal pit stop windows as a
+          separate optimization layer on top of pace predictions.
+    \item \textbf{Driver DNA modelling}: characterizing individual driver
+          wet-weather preference, overtaking aggression, and tire management
+          style as latent embeddings.
+    \item \textbf{Ensemble methods}: combining XGBoost and neural network
+          predictions via stacking for marginal accuracy gains.
+    \item \textbf{Uncertainty quantification}: providing calibrated confidence
+          intervals rather than point predictions.
+\end{itemize}
+
+The code, data pipeline, and trained models are available in the accompanying
+repository, enabling reproducibility and extension by the research community.

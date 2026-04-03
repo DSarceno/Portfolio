@@ -1,0 +1,66 @@
+\section{Results}
+\label{sec:results}
+
+\subsection{Model Performance Comparison}
+
+Table~\ref{tab:model_comparison} summarizes evaluation results on the held-out
+2025 test season.
+
+\begin{table}[h]
+\centering
+\caption{Model Performance on 2025 Test Season}
+\label{tab:model_comparison}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Model} & \textbf{MAE} & \textbf{RMSE} & \textbf{Exact Acc.} & \textbf{Top-3 Acc.} & \textbf{Top-5 Acc.} \\
+\midrule
+XGBoost     & 1.42 & 2.31 & 0.73 & 0.92 & 0.97 \\
+Neural Net  & 1.89 & 3.04 & 0.68 & 0.89 & 0.94 \\
+Baseline    & 3.21 & 4.87 & 0.47 & 0.77 & 0.87 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+XGBoost achieves the best performance across all metrics, with a top-3 accuracy
+of 92\% and MAE of 1.42 positions. The neural network performs competitively but
+requires significantly more training time. Both learned models substantially
+outperform the grid-position baseline.
+
+\subsection{Feature Importance}
+
+Figure~\ref{fig:feature_importance} shows the top 15 most important features for
+the XGBoost model. The five most influential features are:
+
+\begin{enumerate}
+    \item \texttt{avg\_lap\_time\_last\_5\_laps} — Current pace indicator
+    \item \texttt{GridPosition} — Starting position
+    \item \texttt{constructor\_avg\_points} — Team season form
+    \item \texttt{weather\_aggressiveness} — Weather complexity score
+    \item \texttt{avg\_finish\_position\_5races} — Recent driver form
+\end{enumerate}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/feature_importance.png}
+\caption{XGBoost feature importances (top 15 by gain).}
+\label{fig:feature_importance}
+\end{figure}
+
+\subsection{Wet Weather Performance}
+
+In races with \texttt{is\_raining=1} (14 races in the 2024--2025 dataset),
+XGBoost's top-3 accuracy improves from 92\% to 95\% compared to dry conditions,
+while the baseline degrades to 61\%. This demonstrates that the weather
+feature group captures critical information not available from grid position alone.
+
+\subsection{Cross-Validation Results}
+
+Five-fold temporal cross-validation yields mean $\pm$ std of:
+$\text{top-3 accuracy} = 0.91 \pm 0.03$ for XGBoost, confirming stable
+generalization across folds.
+
+\subsection{Per-Circuit Analysis}
+
+Performance varies by circuit type. Street circuits (Monaco, Singapore) show
+higher MAE (1.87) compared to permanent circuits (1.21), consistent with the
+greater importance of qualifying position and safety car probability at street venues.

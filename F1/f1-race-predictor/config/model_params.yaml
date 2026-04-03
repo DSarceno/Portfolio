@@ -1,0 +1,122 @@
+# =============================================================================
+# Model Parameters Configuration
+# =============================================================================
+
+models:
+  
+  xgboost:
+    enabled: true
+    primary: true  # Usar este por defecto
+    
+    hyperparameters:
+      # Objective
+      objective: "multi:softprob"
+      num_class: 20
+      
+      # Tree parameters
+      max_depth: 6
+      min_child_weight: 1
+      gamma: 0
+      
+      # Regularization
+      alpha: 0  # L1
+      lambda: 1  # L2
+      
+      # Gradient boosting
+      learning_rate: 0.1
+      n_estimators: 200
+      subsample: 0.8
+      colsample_bytree: 0.8
+      colsample_bylevel: 0.8
+      
+      # Other
+      tree_method: "auto"
+      random_state: 42
+      n_jobs: -1
+    
+    training:
+      early_stopping_rounds: 50
+      eval_metric: "mlogloss"
+      verbose: 100
+      batch_size: 256
+      
+    prediction:
+      ntree_limit: 0  # Use all trees
+  
+  neural_net:
+    enabled: true
+    primary: false
+    
+    architecture:
+      input_features: null  # Auto-computed
+      hidden_layers: [256, 128, 64]
+      activation: "relu"
+      output_classes: 20
+      dropout_rate: 0.3
+      batch_norm: true
+      
+    hyperparameters:
+      learning_rate: 0.001
+      optimizer: "adam"
+      loss: "cross_entropy"
+      weight_decay: 0.0001
+      
+    training:
+      epochs: 100
+      batch_size: 32
+      early_stopping: 20
+      early_stopping_metric: "val_loss"
+      validation_split: 0.2
+      shuffle: true
+      random_state: 42
+      device: "cpu"  # Options: cpu, cuda
+      
+    prediction:
+      use_dropout_inference: false  # Dropout off durante predicción
+  
+  baseline:
+    enabled: true
+    primary: false
+    
+    strategy: "grid_position"  # Usar grid position como predicción base
+    
+    parameters:
+      use_historical_delta: true
+      dnf_threshold: 0.2
+      max_position_change: 5
+
+# Cross-validation
+cross_validation:
+  enabled: true
+  method: "temporal"  # temporal, stratified, kfold
+  n_splits: 5
+  
+# Hyperparameter tuning
+hyperparameter_tuning:
+  enabled: false  # Cambiar a true si quieres tuning
+  method: "grid_search"  # Options: grid_search, random_search, bayesian
+  
+  xgboost:
+    param_grid:
+      max_depth: [4, 5, 6, 7]
+      learning_rate: [0.05, 0.1, 0.2]
+      subsample: [0.7, 0.8, 0.9]
+  
+  neural_net:
+    param_grid:
+      learning_rate: [0.0001, 0.001, 0.01]
+      hidden_layers: [[128, 64], [256, 128, 64]]
+
+# Model saving
+model_saving:
+  save_best_model: true
+  save_all_models: false
+  save_frequency: "best"  # Options: best, every_n_epochs
+  save_dir: "models"
+  
+# Metrics thresholds
+metrics_thresholds:
+  min_accuracy: 0.5
+  min_top3_accuracy: 0.8
+  max_mae: 5.0
+  min_dnf_f1: 0.6

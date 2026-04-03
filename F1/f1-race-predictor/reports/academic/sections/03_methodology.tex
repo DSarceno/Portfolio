@@ -1,0 +1,73 @@
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Data Sources}
+
+Data is obtained via the FastF1 Python library, which provides access to the
+official F1 timing database. We collect race results, qualifying times, lap-by-lap
+telemetry (speed, throttle, brake, DRS activation), and weather station
+measurements for all race weekends from 2020 through 2025—a total of approximately
+120 race weekends and 2,400 driver-race records.
+
+\subsection{Feature Engineering}
+
+Features are organized into four groups:
+
+\subsubsection{Lap Features (15 features)}
+Derived from per-lap telemetry data: average lap time over the last 5 laps,
+median and best lap time, standard deviation (consistency), pace trend (linear
+slope), maximum and average speed, throttle/brake usage fractions, cornering and
+straight-line speed, estimated fuel consumption rate, tire degradation rate,
+and DRS activation count.
+
+\subsubsection{Driver Features (20 features)}
+Historical performance indicators: experience (years, total races), career win rate
+and podium rate, points per race, DNF rate, rolling 5-race averages for finishing
+position and points, grid-to-finish position delta, teammate comparison, best
+circuit performance, and team stability indicators.
+
+\subsubsection{Constructor Features (10 features)}
+Team-level metrics: average and recent points, DNF rate, win count, reliability
+score, engine speed ranking relative to competitor power units, and flags for
+new-regulation seasons.
+
+\subsubsection{Weather Features (8 features)}
+Track and air temperature, humidity, wind speed, rainfall binary indicator, track
+status code (0=dry to 3=very wet), temperature differential, and a composite
+aggressiveness score that weights rain, wind, and humidity.
+
+\subsection{Feature Selection}
+
+A variance threshold ($\tau = 0.01$) removes near-constant features, followed by
+correlation filtering that removes one member of each pair exceeding $r = 0.95$.
+The top 30 features by variance are retained for modelling.
+
+\subsection{Model Architectures}
+
+\subsubsection{XGBoost}
+An \texttt{XGBClassifier} with \texttt{multi:softprob} objective predicts
+probability distributions over 20 position classes. Hyperparameters: max\_depth=6,
+learning\_rate=0.1, n\_estimators=200, subsample=0.8, colsample\_bytree=0.8.
+Early stopping with a 50-round patience is applied when validation data is available.
+
+\subsubsection{Neural Network}
+A feed-forward network with architecture [input, 256, 128, 64, 20]. Each hidden
+layer uses ReLU activation, BatchNorm, and Dropout (0.3). Training uses Adam
+optimizer (lr=0.001, weight\_decay=1e-4) with cross-entropy loss and early stopping
+after 20 epochs without validation improvement.
+
+\subsubsection{Baseline}
+Predicts race position as grid position adjusted by the historical mean
+grid-to-finish delta for each driver. Positions are clipped to [1, 20].
+
+\subsection{Training and Evaluation Protocol}
+
+Data is split temporally: 2020--2023 (train), 2024 (validation), 2025 (test).
+This prevents any future information from influencing model fitting. Five-fold
+temporal cross-validation uses an expanding window where each fold adds one
+more season to the training set.
+
+Evaluation metrics include mean absolute error (MAE), RMSE, exact position
+accuracy, top-3 and top-5 accuracy (fraction of predictions within $k$ positions
+of truth), Spearman rank correlation, and normalized discounted cumulative gain
+(NDCG@10).
