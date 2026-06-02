@@ -1,0 +1,45 @@
+quiniela:
+  default_risk_profile: "balanced"
+
+  risk_profiles:
+    safe:
+      favorite_threshold: 0.58
+      upset_tolerance: 0.05
+      draw_bias: 0.90
+
+    balanced:
+      favorite_threshold: 0.50
+      upset_tolerance: 0.10
+      draw_bias: 1.00
+
+    aggressive:
+      favorite_threshold: 0.43
+      upset_tolerance: 0.18
+      draw_bias: 1.10
+
+    contrarian:
+      favorite_threshold: 0.38
+      upset_tolerance: 0.25
+      draw_bias: 1.15
+
+  upset_detection:
+    min_entropy: 0.90
+    min_underdog_probability: 0.22
+    max_favorite_probability: 0.58
+    min_fragility_score: 0.50
+
+  draw_detection:
+    min_draw_probability: 0.26
+    low_goal_total_bonus: true
+
+  export:
+    include_rationale: true
+    include_confidence: true
+    include_scoreline: true
+
+scoring:
+  quiniela_default:
+    correct_1x2: 1.0
+    exact_score_bonus: 2.0
+    upset_bonus: 1.0
+    confidence_weight: 0.5

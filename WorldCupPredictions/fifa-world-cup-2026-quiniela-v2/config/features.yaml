@@ -1,0 +1,68 @@
+feature_groups:
+  team_strength:
+    enabled: true
+    features:
+      - fifa_rank_points
+      - fifa_rank_position
+      - elo_pre_match
+      - pi_rating_pre_match
+      - rolling_form_points_last_5
+      - rolling_goal_diff_last_5
+      - attack_strength
+      - defense_strength
+      - clean_sheet_rate
+      - concede_rate
+      - draw_rate
+      - tournament_experience
+      - world_cup_experience
+      - confederation_strength_index
+      - host_flag
+
+  match_context:
+    enabled: true
+    features:
+      - stage_group
+      - stage_knockout
+      - round_of_tournament
+      - rest_days_team_a
+      - rest_days_team_b
+      - rest_diff
+      - travel_burden_proxy_team_a
+      - travel_burden_proxy_team_b
+      - must_win_team_a
+      - must_win_team_b
+      - elimination_risk_team_a
+      - elimination_risk_team_b
+      - qualification_scenario_pressure
+
+  tournament_updates:
+    enabled: true
+    features:
+      - world_cup_points_so_far
+      - world_cup_goal_diff_so_far
+      - world_cup_goals_for_so_far
+      - world_cup_goals_against_so_far
+      - world_cup_clean_sheets
+      - world_cup_form_last_1
+      - world_cup_form_last_2
+      - cards_accumulated
+      - suspension_risk_proxy
+
+  aggressive_strategy:
+    enabled: true
+    features:
+      - upset_window_score
+      - volatility_index
+      - draw_trap_score
+      - public_bias_proxy
+      - favorite_fragility_score
+      - underdog_live_value_score
+      - match_entropy
+      - confidence_gap
+      - penalty_risk_score
+
+selection:
+  method: "model_based"
+  max_features_to_keep: 50
+  remove_high_correlation: true
+  correlation_threshold: 0.95

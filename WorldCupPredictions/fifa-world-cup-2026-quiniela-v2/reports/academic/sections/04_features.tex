@@ -1,0 +1,16 @@
+\section{Feature engineering}
+Features are grouped into four categories:
+\begin{itemize}
+  \item \textbf{Team strength}: ratings, FIFA points, attack/defense strength,
+        clean-sheet rate, world cup experience, host flag.
+  \item \textbf{Match context}: group/knockout stage, rest days, travel proxy,
+        must-win and elimination-risk flags.
+  \item \textbf{Tournament updates}: points so far, goal difference so far,
+        cards accumulated, suspension risk proxy. These features are refreshed
+        after every matchday.
+  \item \textbf{Aggressive strategy}: upset-window score, volatility index,
+        draw-trap score, public-bias proxy, favorite fragility, match entropy,
+        confidence gap, penalty risk.
+\end{itemize}
+The strategy features are key: they let the pick-optimization layer trigger
+upsets, draws and contrarian picks without re-fitting the models.

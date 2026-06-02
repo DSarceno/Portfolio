@@ -1,0 +1,16 @@
+\section*{Picks per risk profile}
+Pick sheets are produced by the strategy layer using calibrated probabilities
+and the auxiliary aggressive-strategy features (upset window, favorite
+fragility, public bias, draw trap).
+
+\paragraph{Safe.} Highest single-result probability. Conservative draws.
+\paragraph{Balanced.} Best expected-value pick. Draw fallback for low-margin
+matches.
+\paragraph{Aggressive.} Upset trigger when both upset-window and fragility
+agree; draw value when entropy is high.
+\paragraph{Contrarian.} Fade public bias. Prioritise pool differentiation.
+
+The CSV exports live in \texttt{outputs/picks/quiniela\_safe.csv},
+\texttt{outputs/picks/quiniela\_balanced.csv},
+\texttt{outputs/picks/quiniela\_aggressive.csv} and
+\texttt{outputs/picks/quiniela\_contrarian.csv}.

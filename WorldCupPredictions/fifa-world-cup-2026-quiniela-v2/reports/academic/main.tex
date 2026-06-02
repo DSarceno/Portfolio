@@ -1,0 +1,38 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+\title{FIFA World Cup 2026 Quiniela Predictor V2:\\
+An Aggressive, Tournament-Aware Forecasting System}
+\author{DSarceno}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe an aggressive, tournament-aware forecasting and pick-optimization
+system for the 2026 FIFA World Cup. The system combines Elo, PI, and rolling-form
+ratings; multinomial and gradient-boosted classifiers; a Dixon-Coles-adjusted
+Poisson scoreline model; and a dedicated quiniela strategy layer separating
+\emph{true probability} from \emph{best pick}.
+\end{abstract}
+
+\input{sections/01_introduction.tex}
+\input{sections/02_data.tex}
+\input{sections/03_ratings.tex}
+\input{sections/04_features.tex}
+\input{sections/05_models.tex}
+\input{sections/06_simulation.tex}
+\input{sections/07_strategy.tex}
+\input{sections/08_evaluation.tex}
+\input{sections/09_conclusion.tex}
+
+\end{document}

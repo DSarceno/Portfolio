@@ -1,0 +1,15 @@
+\section{Quiniela strategy}
+The strategy layer translates calibrated probabilities into picks under four
+risk profiles:
+\begin{itemize}
+  \item \textbf{Safe.} High favorite threshold, conservative draws.
+  \item \textbf{Balanced.} Expected-value pick with a draw fallback when
+        favorites are weak.
+  \item \textbf{Aggressive.} Triggers upsets when the upset-window and
+        favorite-fragility scores agree; targets draw value when entropy is
+        high.
+  \item \textbf{Contrarian.} Fades public bias and reputation; pursues pool
+        differentiation.
+\end{itemize}
+Each pick is exported with confidence, rationale, and (optional) recommended
+scoreline.

@@ -1,0 +1,47 @@
+models:
+  multinomial:
+    enabled: true
+    primary: false
+    hyperparameters:
+      C: 1.0
+      max_iter: 1000
+      class_weight: "balanced"
+
+  xgboost:
+    enabled: true
+    primary: true
+    hyperparameters:
+      objective: "multi:softprob"
+      num_class: 3
+      max_depth: 5
+      learning_rate: 0.05
+      n_estimators: 400
+      subsample: 0.85
+      colsample_bytree: 0.85
+      reg_alpha: 0.0
+      reg_lambda: 1.0
+      random_state: 42
+      n_jobs: -1
+
+  poisson:
+    enabled: true
+    primary: false
+    hyperparameters:
+      max_goals: 8
+      use_dixon_coles_adjustment: true
+      low_score_correlation: true
+
+calibration:
+  enabled: true
+  methods:
+    - "isotonic"
+    - "sigmoid"
+
+ensemble:
+  enabled: true
+  method: "weighted_blend"
+  weights:
+    ratings: 0.25
+    multinomial: 0.20
+    xgboost: 0.30
+    poisson: 0.25

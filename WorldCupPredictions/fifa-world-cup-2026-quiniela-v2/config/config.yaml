@@ -1,0 +1,76 @@
+project:
+  name: "FIFA World Cup 2026 Quiniela Predictor V2"
+  version: "0.2.0"
+  description: "Aggressive World Cup prediction system optimized for quinielas"
+
+data:
+  historical_start_year: 2014
+  historical_end_year: 2026
+  raw_dir: "data/raw"
+  interim_dir: "data/interim"
+  processed_dir: "data/processed"
+  sources:
+    fifa_rankings:
+      enabled: true
+      mode: "official_snapshot"
+    football_data:
+      enabled: true
+      use_api: true
+      require_api_key: false
+    statsbomb_open:
+      enabled: true
+      use_open_data_only: true
+    manual_csv:
+      enabled: true
+      dir: "data/raw/manual"
+
+tournament:
+  year: 2026
+  teams: 48
+  groups: 12
+  group_size: 4
+  total_matches: 104
+  progression:
+    auto_qualify_per_group: 2
+    best_third_places: 8
+
+training:
+  random_seed: 42
+  split_strategy: "temporal"
+  validation_year: 2025
+  backtest_windows: 5
+  retrain_on_update: true
+
+simulation:
+  n_runs: 10000
+  extra_time_enabled: true
+  penalties_enabled: true
+
+evaluation:
+  metrics:
+    - "log_loss"
+    - "brier_score"
+    - "accuracy_1x2"
+    - "macro_f1_1x2"
+    - "calibration_error"
+    - "top_pick_accuracy"
+    - "aggressive_pick_accuracy"
+    - "exact_score_accuracy"
+    - "upset_hit_rate"
+    - "draw_hit_rate"
+    - "simulated_first_place_rate"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s | %(name)-30s | %(levelname)-8s | %(message)s"
+  file: "logs/world_cup_quiniela_v2.log"
+
+paths:
+  models_dir: "models"
+  outputs_dir: "outputs"
+  reports_dir: "reports"
+  logs_pipeline: "logs/pipeline"
+  logs_training: "logs/training"
+  logs_prediction: "logs/prediction"
+  logs_updates: "logs/updates"
+  logs_errors: "logs/errors"

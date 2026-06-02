@@ -1,0 +1,8 @@
+\section{Evaluation}
+We evaluate the system using log-loss, Brier score, accuracy, macro F1 and
+expected calibration error, plus quiniela-specific metrics (correct 1X2,
+correct exact score, upset hit rate, simulated first-place rate in a 100-entry
+pool). Backtesting is performed via rolling-origin cross-validation on
+historical international matches, with strict temporal splits to prevent
+information leakage. Calibration plots and feature-importance reports are
+exported under \texttt{outputs/diagnostics/}.

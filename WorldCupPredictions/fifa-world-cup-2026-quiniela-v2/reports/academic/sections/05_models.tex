@@ -1,0 +1,13 @@
+\section{Models}
+Three model families produce outcome probabilities:
+\begin{itemize}
+  \item \textbf{Multinomial logistic regression} on standardized features.
+  \item \textbf{XGBoost} multi-class classifier with shallow trees, modest
+        learning rate, and 400 estimators.
+  \item \textbf{Poisson} scoreline model with Dixon-Coles low-score
+        adjustment, providing exact-score probabilities and a scoreline-derived
+        H/D/A probability.
+\end{itemize}
+Probabilities are calibrated with isotonic regression (one-vs-rest) before
+being passed to a weighted blender that combines them with rating-based
+probabilities.

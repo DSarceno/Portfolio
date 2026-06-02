@@ -1,0 +1,12 @@
+\section{Tournament simulation}
+A Monte-Carlo engine simulates the full tournament thousands of times. Each
+run:
+\begin{enumerate}
+  \item Samples a result for every group-stage fixture.
+  \item Applies FIFA tiebreak ordering (points, goal difference, goals scored).
+  \item Selects the eight best-third teams.
+  \item Builds a deterministic Round-of-32 bracket.
+  \item Simulates knockout matches with a penalty-proxy adjustment for ties.
+\end{enumerate}
+Aggregations yield qualification probabilities, round-reached probabilities,
+championship probabilities and most likely bracket paths.

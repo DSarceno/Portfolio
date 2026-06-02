@@ -1,0 +1,14 @@
+\section*{Simulation snapshot}
+Tournament Monte-Carlo aggregates live under \texttt{outputs/simulations/}:
+\begin{itemize}
+  \item \texttt{tournament\_probabilities.csv} -- group-stage qualification
+        probabilities.
+  \item \texttt{championship\_probabilities.csv} -- per-team championship
+        probability.
+  \item \texttt{round\_reached\_probabilities.csv} -- probability of reaching
+        each round.
+  \item \texttt{bracket\_paths.csv} -- the run-level champion, runner-up,
+        third-place sequence.
+\end{itemize}
+Re-run \texttt{python scripts/simulate\_tournament.py} (or \texttt{make simulate})
+to refresh after a matchday update.

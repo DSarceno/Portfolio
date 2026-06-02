@@ -1,0 +1,12 @@
+\section{Data}
+Four sources are ingested:
+\begin{itemize}
+  \item FIFA Men's World Ranking snapshots (offline CSV).
+  \item \texttt{football-data.org} fixtures, results and standings.
+  \item StatsBomb Open Data event-level matches (when available).
+  \item Manual CSV overrides for emergency correction.
+\end{itemize}
+Every external pull is persisted under \texttt{data/raw/} with a UTC
+timestamp so all training and inference runs are reproducible. A validation
+module audits the canonical match table for missing keys, negative scores and
+duplicate fixtures.

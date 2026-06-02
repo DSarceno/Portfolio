@@ -1,0 +1,13 @@
+\section{Team strength ratings}
+We combine three complementary rating systems:
+\paragraph{Elo.} Competition-aware $K$ factor (higher for World Cup matches),
+margin-of-victory multiplier, and configurable home advantage. The Elo system
+provides a stable backbone of long-horizon team strength.
+\paragraph{PI rating.} Maintains separate home and away ratings, updated via a
+log-scale expected goal difference (Constantinou \& Fenton, 2013). Particularly
+effective in capturing teams that travel poorly.
+\paragraph{Rolling form.} Sliding window of points and goal differences over
+the last $n$ matches, capturing very recent shifts in team quality (injuries,
+managerial change).
+\paragraph{Ensemble.} The three ratings are z-scored and weighted into a
+composite strength index used as backbone probabilities.
