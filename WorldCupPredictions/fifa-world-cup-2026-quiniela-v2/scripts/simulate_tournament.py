@@ -172,9 +172,19 @@ def main() -> int:
             calibrator = None
     except FileNotFoundError:
         calibrator = None
+    elo = None
+    try:
+        ensemble = load_pickle(models_dir / "rating_ensemble.pkl")
+        elo = ensemble.elo
+        logger.info("Loaded Elo ratings from rating_ensemble.pkl (%d teams)", len(elo.ratings))
+    except FileNotFoundError:
+        logger.warning("rating_ensemble.pkl not found; simulator will run on Poisson only")
 
     predictor = MatchPredictor(
-        outcome_models={"xgboost": xgb}, poisson_model=poisson, calibrator=calibrator
+        outcome_models={"xgboost": xgb},
+        poisson_model=poisson,
+        elo=elo,
+        calibrator=calibrator,
     )
 
     def _predict_pair(a: str, b: str) -> np.ndarray:

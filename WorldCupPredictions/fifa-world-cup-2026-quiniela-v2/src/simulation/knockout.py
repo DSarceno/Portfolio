@@ -90,7 +90,7 @@ def simulate_knockout(
 
     def _record_round(teams: list[str], label: str) -> None:
         for t in teams:
-            rounds_reached.setdefault(t, label)
+            rounds_reached[t] = label
 
     teams = []
     for pair in bracket:

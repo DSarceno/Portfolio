@@ -44,9 +44,9 @@ fifa-world-cup-2026-quiniela-v2/
 ├── src/                     # 60 módulos. Layered architecture, deps unidireccionales.
 │   ├── utils/               # logging, config, io, dates, metrics, plotting, constants.
 │   ├── data/                # ingesta y unificación. Clients: football_data, kaggle, statsbomb, fifa_rankings.
-│   ├── ratings/             # Elo, PI, Form, ensemble z-scored.
+│   ├── ratings/             # Elo, PI, Form, ensemble z-scored (decaimiento temporal opcional).
 │   ├── features/            # team/match/market/fatigue/tournament + build_features (entrypoint).
-│   ├── models/              # base, multinomial, xgboost, poisson (Dixon-Coles), calibration, factory.
+│   ├── models/              # base, multinomial, xgboost, poisson (Skellam para H/D/A + Dixon-Coles para scorelines), calibration, factory.
 │   ├── ensemble/            # blender (pesos config) + pick_optimizer (perfiles de riesgo).
 │   ├── simulation/          # group_stage + VectorizedGroupStageEngine, knockout, bracket, tournament_simulator.
 │   ├── prediction/          # predictor, score_predictor, quiniela_strategy, daily_update, feature_builder.
@@ -192,6 +192,8 @@ python scripts/simulate_tournament.py --n-runs 2000
 - **NUNCA commitear `.env`**, `data/raw/`, `data/interim/`, `data/processed/`, `models/*.pkl`, `outputs/`, `logs/`. Están en `.gitignore`.
 - **NUNCA usar `competition="group"` o `stage="group"` como filtro de "fase de grupos del Mundial"**. El Kaggle client etiqueta histórico con `stage="historical"` precisamente para evitar esa contaminación.
 - **NUNCA cambiar `CANONICAL_COLUMNS` sin actualizar también** `src/data/data_loader.py` (default columns), `src/data/kaggle_results_client.py`, `_normalize_football`, `_normalize_statsbomb` y los scripts que ingieren.
+- **NUNCA confundir la orientación de la matriz Poisson en `outcome_probabilities`**. `matrix[i, j]` = `P(team_a marca i, team_b marca j)`. Por lo tanto **team_a gana cuando `i > j`** (`np.tril(matrix, k=-1)`); **team_b gana cuando `j > i`** (`np.triu(matrix, k=1)`). El camino default ahora es Skellam (`scipy.stats.skellam`) — más limpio. Si tocas el camino de la matriz, mantén la orientación. Bug histórico: estaban invertidos y arrastraban toda la simulación a equipos equivocados.
+- **NUNCA usar `setdefault` en `_record_round`** de `src/simulation/knockout.py`. Tiene que ser asignación directa (`rounds_reached[t] = label`) porque los equipos avanzan y la etiqueta se sobreescribe ronda a ronda. Bug histórico: `setdefault` dejaba a TODOS los equipos en `"r32"` para siempre.
 
 ---
 
@@ -204,7 +206,9 @@ python scripts/simulate_tournament.py --n-runs 2000
 | `src/features/build_features.py` (`_fillna_numeric`) | Excluye `score_a`/`score_b`/`match_id` del fill. Si agregas otra columna metadata numérica, sumala a `_METADATA_NUMERIC_COLUMNS`. |
 | `src/simulation/tournament_simulator.py` | El cache se construye en `__init__`. Costoso (45s para 48 equipos). Reusa el simulador si vas a correr varios `n_runs` distintos. |
 | `src/simulation/group_stage.py::VectorizedGroupStageEngine` | El sort por grupos usa `np.lexsort` con orden de keys `(noise, gf, gd, points)` y `[::-1]`. Cambiar el orden rompe los tiebreaks FIFA. |
-| `src/simulation/knockout.py` | Tiene manejo de "bye" para rondas con número impar de equipos. Si cambias el flujo, mantén ese fallback o el simulador truena en rondas mal calibradas. |
+| `src/simulation/knockout.py` | Tiene manejo de "bye" para rondas con número impar de equipos. Si cambias el flujo, mantén ese fallback o el simulador truena en rondas mal calibradas. **`_record_round` usa asignación directa (NO `setdefault`)** — los equipos sobrescriben su última ronda alcanzada al avanzar. |
+| `src/models/poisson_model.py::outcome_probabilities` | Orientación crítica de la matriz scoreline (ver §6 NUNCA). El default es Skellam; el camino DC se conserva para diagnóstico. El `fit()` aplica peso `exp(-xi * days_since)` cuando `time_decay_xi > 0` y existe columna `date` en el input. Si llamas `fit()` sin `date`, el decay queda desactivado silenciosamente. |
+| `src/training/trainer.py::_lasso_select_features` | Antes de entrenar XGB/multinomial corre LASSO multinomial (L1) sobre el pool de features y poda las que no aportan. Si LASSO falla o deja menos de `min_features=5`, hace fallback. Logguea siempre los features descartados — esa es la diagnostica clave. |
 | `src/prediction/predictor.py::predict_proba` | Salta multinomial/XGBoost cuando faltan feature columns. Esto permite que la API y el simulador funcionen con solo `(team_a, team_b)`. No conviertas esto en error duro. |
 | `scripts/run_pipeline.py` | Es idempotente — no recolecta a menos que pases `--collect`. Esto es intencional para no sobreescribir `matches_unified.csv` accidentalmente. |
 | `scripts/simulate_tournament.py::_select_fixtures` | Filtra estrictamente por `competition=WC ∧ year=2026 ∧ outcome.isna() ∧ (stage~"GROUP" ∨ group≠"")`. Cualquier cambio aquí puede meter partidos históricos en la simulación. |
@@ -317,6 +321,178 @@ Asegúrate de que `pytest tests/unit/test_models.py -v` pase. Verifica que `pred
 - Si el usuario tiene plan de pago de football-data.org (free tier limita el histórico del Mundial).
 - Si Kaggle `results.csv` se está versionando en algún lado o cada vez se descarga manual (actualmente: manual).
 - Si los reportes LaTeX se compilan en CI o solo localmente con `run_all.bat`.
+
+---
+
+## 10. Upgrade de modelado (junio 2026)
+
+Este lote de cambios viene de un análisis comparativo contra la literatura académica (Dixon-Coles 1997, Karlis-Ntzoufras 2009, Groll-Schauberger-Tutz 2015, Groll-Ley 2019). Se aplicó después de detectar resultados anti-realistas (Paraguay/Panama/Iraq con probabilidad de campeonato superior a Spain/Brazil) trazados a **dos bugs** + **señal comprimida** en las potencias UEFA/CONMEBOL.
+
+### Bugs corregidos
+
+1. **`outcome_probabilities` con tri-up/tri-low invertidos** → Poisson votaba al rival equivocado con peso efectivo ~50% en la simulación. Ver §6 (NUNCA) y §7 entrada de `poisson_model.py`.
+2. **`_record_round` usando `setdefault`** → `round_reached_probabilities.csv` solo tenía `r32`. Ver §6 (NUNCA) y §7 entrada de `knockout.py`.
+
+### Mejoras de modelado introducidas
+
+| Cambio | Archivo | Mecánica | Default |
+|---|---|---|---|
+| **K factors recalibrados** | `src/ratings/elo.py::EloConfig` | `k_friendly: 18 → 8`, `k_world_cup: 60 → 80`. Amistosos pesan menos; el Mundial pesa más. | activado |
+| **Decaimiento temporal** | `src/ratings/{elo,pi_rating}.py`, `src/models/poisson_model.py` | Peso `exp(-xi * days_to_latest)` aplicado al delta Elo / error PI / promedios Poisson. Replica Dixon-Coles 1997. | `xi_elo=0.0015`, `xi_pi=0.0015`, `xi_poisson=0.0020` (configurable en `config.yaml::ratings.time_decay`) |
+| **Skellam para H/D/A** | `src/models/poisson_model.py::outcome_probabilities` | Reemplaza la integración del grid de scorelines + corrección τ. Calibra mejor empates (Karlis & Ntzoufras 2009). El grid Dixon-Coles se mantiene para *exact scoreline* en quinielas. | `use_skellam: true` en `config/model_params.yaml::models.poisson.hyperparameters` |
+| **LASSO para selección de features** | `src/training/trainer.py::_lasso_select_features` | L1-multinomial sobre el pool de ~25 features engineered; descarta las que no aportan señal independiente (Groll-Schauberger-Tutz 2015). Floor en 5 features para evitar sobrelimpieza. | `lasso_enabled: true`, `C=0.1` en `config.yaml::training.lasso` |
+
+### Configuración nueva
+
+```yaml
+# config/config.yaml
+training:
+  lasso:
+    enabled: true
+    C: 0.1                  # baja C ⇒ más poda; sube ⇒ conserva más
+
+ratings:
+  time_decay:
+    enabled: true
+    xi_elo: 0.0015          # half-life ~462 días
+    xi_pi: 0.0015
+    xi_poisson: 0.0020      # half-life ~347 días
+
+# config/model_params.yaml
+models:
+  poisson:
+    hyperparameters:
+      use_skellam: true
+      time_decay_xi: 0.0020
+```
+
+### Verificaciones rápidas post-cambio
+
+```powershell
+REM Confirmar que LASSO podó features
+findstr /C:"LASSO kept" logs\training\train_models.log
+
+REM Confirmar que el decay está activo
+findstr /C:"xi=" logs\pipeline\build_ratings.log
+
+REM Confirmar Skellam
+findstr /C:"skellam=True" logs\training\train_models.log
+
+REM Sanity: round_reached con todas las etapas (no solo r32)
+python -c "import pandas as pd; df = pd.read_csv('outputs/simulations/round_reached_probabilities.csv'); print(df['stage'].unique())"
+```
+
+### Cómo revertir cambios individualmente
+
+- LASSO: `training.lasso.enabled: false` (training se hace sobre todo el pool).
+- Decay temporal: `ratings.time_decay.enabled: false` (xi=0 para todos los ratings).
+- Skellam: `models.poisson.hyperparameters.use_skellam: false` (vuelve al grid + τ).
+- K factors: editar `EloConfig` (no expuesto en YAML — se cambia en código).
+
+### Compatibilidad
+
+- **No agrega dependencias**. `scipy.stats.skellam` ya estaba en `scipy==1.11.4`.
+- **No cambia CLI** de ningún script. `run_all.bat` funciona sin tocar nada.
+- **No cambia firma pickle**: los pkls anteriores se invalidan al regenerar el pipeline, pero la estructura es backward-compatible vía defaults en `__init__`.
+
+---
+
+## Anexo A — Roadmap de mejoras pendientes
+
+Cambios identificados en el análisis de literatura que **NO se aplicaron todavía**, en orden de impacto esperado / esfuerzo. Útil para próximas iteraciones.
+
+### A.1 Consenso de casas de apuestas como prior — **🔥🔥🔥 impacto / 🟡 esfuerzo medio**
+
+La conclusión más unánime de la literatura (Leitner-Zeileis-Hornik 2010, Groll 2026, todos los rankings de competiciones de forecasting): **agregar odds de ≥10 casas de apuestas, despojarlas del overround, promediar en escala logit** produce un benchmark que casi nadie supera por más de 1-2% de log-loss.
+
+**Cómo entrarle:**
+1. Scraper o API que tome 1X2 odds de Pinnacle / Bet365 / Bwin / etc. para cada fixture WC 2026.
+2. `src/data/bookmaker_client.py` con `fetch_odds(fixture_id) -> dict[bookie, [home, draw, away]]`.
+3. Para cada fixture: `1/odds_i`, normalizar (quita overround), `logit`, promedio simple, `softmax` → `(p_home, p_draw, p_away)`.
+4. Agregar al feature matrix como `bookmaker_p_home / p_draw / p_away` (3 columnas).
+5. Agregar como rama extra en `src/ensemble/blender.py::BlendWeights`.
+
+**Cita:** Zeileis 2018 (https://www.zeileis.org/news/fifa2018/), Groll 2026 R-bloggers.
+
+### A.2 Valor de plantilla (Transfermarkt) — **🔥🔥🔥 impacto / 🟡 esfuerzo medio**
+
+La covariable más predictiva DESPUÉS del Elo en las selecciones LASSO de Groll et al. (2014/2018/2022/2026). Captura calidad **actual** del talento — exactamente lo que el Elo, basado en resultados, NO captura cuando una potencia rota plantilla en amistosos.
+
+**Cómo entrarle:**
+1. `src/data/transfermarkt_client.py` — scraper de URLs tipo `transfermarkt.com/<team>/startseite/verein/<id>`.
+2. Por selección, extraer: `squad_value_total`, `squad_value_top11`, `squad_value_median`, `n_legionnaires_top5_leagues`, `n_ucl_players`, `mean_age`.
+3. Snapshot inmutable en `data/raw/transfermarkt/<timestamp>.csv` (mismo patrón que las otras fuentes).
+4. `compute_team_features` consume y emite columnas `*_diff` entre equipos.
+5. `NUMERIC_FEATURE_COLUMNS` += nuevos.
+
+**Nota:** Kaggle tiene un dataset `davidcariboo/player-scores` que también trae plantillas + valores (mismo repo del Kaggle ya integrado). Más fácil que scrapear.
+
+**Cita:** Groll-Schauberger-Tutz 2015, Groll-Ley 2019.
+
+### A.3 Plus-minus / PageRank rating — **🔥🔥 impacto / 🟡 esfuerzo medio**
+
+El modelo de producción Groll 2026 lo usa; Hubáček 2019 (ganador del Soccer Prediction Challenge) usa PageRank sobre grafo de partidos. **Uncorrelated con Elo** — agrega información ortogonal.
+
+**PageRank (más simple que plus-minus, no requiere data de jugadores):**
+1. Construir grafo `team_a → team_b` con peso = goal_margin (o W=3/D=1/L=0).
+2. `scipy.sparse` + `networkx.pagerank()` → vector de rankings.
+3. Snapshot en `outputs/diagnostics/pagerank.csv`.
+4. Sumar al ensemble en `RatingEnsemble` con peso 0.10-0.15.
+
+**Cita:** Hubáček-Šourek-Železný 2019 (Springer ML 108).
+
+### A.4 Mixture prior en shrinkage — **🔥 impacto / 🟢 esfuerzo bajo**
+
+El shrinkage Gaussiano actual jala todos los equipos hacia la media de su confederación. Baio-Blangiardo 2010 demostraron que un **mixture prior** (élite vs resto) preserva mejor la separación.
+
+**Cómo entrarle:**
+1. En `src/ratings/shrinkage.py::RatingShrinker`, agregar dos sub-priors por confederación: `elite` (~top 30%) y `regular`.
+2. La asignación team→sub-prior se hace por nivel histórico (Elo top 30% de la confederación dentro de la elite).
+3. Cada team se jala hacia su prior correspondiente.
+
+**Cita:** Baio-Blangiardo 2010 (https://discovery.ucl.ac.uk/16040/).
+
+### A.5 Habilitar features StatsBomb — **🔥 impacto / 🔴 esfuerzo alto**
+
+Cliente y data ya están integrados pero **no producen features**. xG agregado por equipo (`xg_for_per90`, `xg_against_per90`) es señal independiente. Aporta marginal en selecciones (poca muestra ~10 partidos/año), pero útil.
+
+**Cómo entrarle:**
+1. `src/features/team_features.py` consume `data/raw/statsbomb/*.json` agregado por equipo.
+2. Solo selecciones top que aparecen en StatsBomb open data (no todas).
+3. Probable bajo aporte tras LASSO; vale validar.
+
+### A.6 Calibrador sobre held-out tournament — **🔥 impacto / 🟢 esfuerzo bajo**
+
+El calibrador isotónico se ajusta sobre `val_features` del temporal_split. Si `validation_year=2025` y XGBoost entrena hasta 2024, no hay leak. Pero conviene validar explícitamente que el calibrador NUNCA ve datos del set de entrenamiento del clasificador base.
+
+**Cómo entrarle:**
+1. En `src/training/trainer.py::fit`, asertar `set(train_features.index) ∩ set(val_features.index) == ∅`.
+2. Agregar test unitario que reproduzca el split y verifique la disjuntez.
+
+### A.7 Benchmark contra casas de apuestas — **🔥 valor diagnóstico / 🟡 esfuerzo medio**
+
+Reporta `log_loss(modelo)` vs `log_loss(bookmaker_consensus)` sobre el set de validación. La literatura es unánime: **si el modelo no supera al consenso en log-loss, el consenso ES tu modelo**.
+
+**Cómo entrarle:**
+1. Dependencia de A.1 (necesitas odds).
+2. `src/training/evaluator.py::compare_against_bookmaker(model_proba, bookie_proba, y)`.
+3. Salida en `outputs/diagnostics/benchmark_vs_bookmaker.csv` con log-loss por torneo y delta.
+
+### A.8 Backtest cross-tournament — **🔥 valor diagnóstico / 🟢 esfuerzo bajo**
+
+Estándar de Groll: train WC2002-2014, test WC2018; train +2018, test 2022. Mide generalización. El `src/training/backtester.py` ya existe (cobertura 0%) — solo hay que cablearlo.
+
+**Cómo entrarle:**
+1. Implementar `backtester.run_tournament_backtest(tournament_year)` que entrena sobre `< year` y predice `== year`.
+2. Recolecta log-loss, Brier, RPS.
+3. Salida en `outputs/diagnostics/backtest_<year>.csv`.
+4. Llamado opcional desde `run_all.bat` (paso 8.5).
+
+### Prioridad sugerida si se retoma
+
+Si retomas el modelo: **A.2 (Transfermarkt via Kaggle player-scores)** primero — es la fuente que más cita la literatura, está en un Kaggle que ya conoces. Luego **A.8 (backtest)** para medir el impacto cuantitativamente. **A.1 (bookmaker consensus)** es el santo grial pero requiere infraestructura externa nueva.
+
+**No retomes A.5 (StatsBomb)** salvo que quieras juguete; el ROI para selecciones es muy bajo.
 
 ---
 

@@ -11,6 +11,7 @@ import pandas as pd
 from src.ratings.elo import EloRating
 from src.ratings.form_rating import FormRating
 from src.ratings.pi_rating import PIRating
+from src.ratings.shrinkage import RatingShrinker, count_matches_per_team
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -34,6 +35,7 @@ class RatingEnsemble:
         pi: Optional[PIRating] = None,
         form: Optional[FormRating] = None,
         weights: Optional[EnsembleWeights] = None,
+        shrinker: Optional[RatingShrinker] = None,
     ) -> None:
         """Initialize the ensemble.
 
@@ -42,11 +44,18 @@ class RatingEnsemble:
             pi: Optional pre-configured :class:`PIRating`.
             form: Optional pre-configured :class:`FormRating`.
             weights: Optional blend weights.
+            shrinker: Optional :class:`RatingShrinker`. When provided, after
+                fitting Elo and PI the shrinker pulls each team's rating
+                toward its confederation prior with weight proportional to
+                match count. Recommended for tournaments where many qualifying
+                teams have little history against strong international rivals.
         """
         self.elo = elo or EloRating()
         self.pi = pi or PIRating()
         self.form = form or FormRating()
         self.weights = weights or EnsembleWeights()
+        self.shrinker = shrinker
+        self.match_counts: dict[str, int] = {}
 
     def fit(self, matches: pd.DataFrame) -> "RatingEnsemble":
         """Fit all three rating systems on *matches*.
@@ -60,6 +69,18 @@ class RatingEnsemble:
         self.elo.fit(matches)
         self.pi.fit(matches)
         self.form.fit(matches)
+
+        if self.shrinker is not None:
+            self.match_counts = count_matches_per_team(matches)
+            self.shrinker.shrink_elo(self.elo, self.match_counts)
+            self.shrinker.shrink_pi(self.pi, self.match_counts)
+            logger.info(
+                "Shrinkage applied (K_elo=%s, K_pi=%s) over %d teams",
+                self.shrinker.k_elo,
+                self.shrinker.k_pi,
+                len(self.match_counts),
+            )
+
         logger.info("Rating ensemble fit completed")
         return self
 

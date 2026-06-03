@@ -6,6 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 from src.utils.logging_config import get_logger
@@ -19,12 +20,13 @@ class EloConfig:
 
     base: float = 1500.0
     k_default: float = 24.0
-    k_world_cup: float = 60.0
+    k_world_cup: float = 80.0
     k_continental: float = 40.0
     k_qualifier: float = 30.0
-    k_friendly: float = 18.0
+    k_friendly: float = 8.0
     home_advantage: float = 65.0
     goal_diff_multiplier: float = 1.0
+    time_decay_xi: float = 0.0
 
 
 COMPETITION_K_MAP = {
@@ -105,6 +107,7 @@ class EloRating:
         score_b: int,
         competition: str | None = None,
         neutral: bool = True,
+        weight: float = 1.0,
     ) -> tuple[float, float]:
         """Update ratings for one match.
 
@@ -115,6 +118,8 @@ class EloRating:
             score_b: Goals scored by *team_b*.
             competition: Competition tag.
             neutral: ``True`` for neutral-venue matches (no home advantage).
+            weight: Multiplier on the Elo delta. Use ``< 1`` to down-weight old
+                matches (Dixon-Coles style time decay).
 
         Returns:
             Tuple ``(new_rating_a, new_rating_b)``.
@@ -133,7 +138,7 @@ class EloRating:
 
         k = self.k_for_competition(competition)
         margin = self.goal_margin_multiplier(int(score_a) - int(score_b))
-        delta = k * margin * (actual_a - expected_a)
+        delta = weight * k * margin * (actual_a - expected_a)
 
         self.ratings[team_a] = ra + delta
         self.ratings[team_b] = rb - delta
@@ -141,6 +146,11 @@ class EloRating:
 
     def fit(self, matches: pd.DataFrame) -> "EloRating":
         """Replay every match in chronological order.
+
+        When ``config.time_decay_xi > 0``, each match contributes a delta
+        scaled by ``exp(-xi * days_since)``, where ``days_since`` is the gap
+        between the match date and the most recent match in the table.
+        This down-weights stale history (Dixon-Coles 1997 style).
 
         Args:
             matches: DataFrame with columns ``date``, ``team_a``, ``team_b``,
@@ -153,12 +163,23 @@ class EloRating:
         if matches.empty:
             return self
         ordered = matches.sort_values("date").reset_index(drop=True)
+        xi = float(self.config.time_decay_xi)
+        ref_date: pd.Timestamp | None = None
+        if xi > 0:
+            dates = pd.to_datetime(ordered["date"], errors="coerce")
+            ref_date = dates.max()
         for _, row in ordered.iterrows():
             try:
                 score_a = int(row["score_a"])
                 score_b = int(row["score_b"])
             except (TypeError, ValueError):
                 continue
+            weight = 1.0
+            if xi > 0 and ref_date is not None:
+                match_date = pd.to_datetime(row["date"], errors="coerce")
+                if pd.notna(match_date):
+                    days = max(float((ref_date - match_date).days), 0.0)
+                    weight = float(np.exp(-xi * days))
             self.update_match(
                 team_a=row["team_a"],
                 team_b=row["team_b"],
@@ -166,8 +187,14 @@ class EloRating:
                 score_b=score_b,
                 competition=row.get("competition"),
                 neutral=bool(row.get("neutral_venue", True)),
+                weight=weight,
             )
-        logger.info("Elo fit over %d matches; %d teams rated", len(ordered), len(self.ratings))
+        logger.info(
+            "Elo fit over %d matches; %d teams rated (xi=%.4f)",
+            len(ordered),
+            len(self.ratings),
+            xi,
+        )
         return self
 
     def snapshot(self) -> pd.DataFrame:

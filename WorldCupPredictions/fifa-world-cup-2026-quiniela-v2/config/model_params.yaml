@@ -30,6 +30,8 @@ models:
       max_goals: 8
       use_dixon_coles_adjustment: true
       low_score_correlation: true
+      use_skellam: true
+      time_decay_xi: 0.0020
 
 calibration:
   enabled: true

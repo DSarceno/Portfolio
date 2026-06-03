@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from scipy.stats import poisson
+from scipy.stats import poisson, skellam
 
 from src.models.base_model import BaseOutcomeModel
 from src.utils.constants import OUTCOME_TO_INDEX
@@ -40,55 +40,108 @@ class PoissonScoreModel(BaseOutcomeModel):
         Args:
             max_goals: Maximum number of goals to consider per side in the
                 scoreline grid.
-            rho: Dixon-Coles correlation parameter.
-            hyperparameters: Optional configuration dict.
+            rho: Dixon-Coles correlation parameter (used only for the exact
+                scoreline grid when ``use_dixon_coles_adjustment`` is true).
+            hyperparameters: Optional configuration dict. Recognized keys:
+                ``max_goals``, ``rho``, ``use_dixon_coles_adjustment``,
+                ``use_skellam`` (default True; if true, H/D/A probabilities are
+                derived from the Skellam distribution which natively handles
+                the goal-difference distribution and yields better-calibrated
+                draws than the Dixon-Coles tau correction), ``time_decay_xi``
+                (Dixon-Coles 1997 style exponential decay applied to historical
+                matches at fit time; default 0 = no decay).
         """
         super().__init__(name="poisson", feature_columns=["team_a", "team_b"])
         hp = hyperparameters or {}
         self.max_goals = int(hp.get("max_goals", max_goals))
         self.rho = float(hp.get("rho", rho))
         self.use_dixon_coles = bool(hp.get("use_dixon_coles_adjustment", True))
+        self.use_skellam = bool(hp.get("use_skellam", True))
+        self.time_decay_xi = float(hp.get("time_decay_xi", 0.0))
         self.fit_result: Optional[PoissonFit] = None
 
     def fit(self, X: pd.DataFrame, y: pd.Series) -> "PoissonScoreModel":
-        """Estimate attack/defense strengths via simple averaging.
+        """Estimate attack/defense strengths via weighted averaging.
+
+        When ``self.time_decay_xi > 0`` and *X* has a ``date`` column, each
+        match contributes a weight ``exp(-xi * days_since_latest)`` so that
+        recent results dominate the attack/defense estimates (Dixon-Coles
+        1997).
 
         Args:
             X: DataFrame with ``team_a``, ``team_b``, ``score_a``, ``score_b``
-                columns.
+                and optional ``date`` columns.
             y: Outcome labels (unused — kept for API compatibility).
 
         Returns:
             ``self``.
         """
-        df = X[["team_a", "team_b", "score_a", "score_b"]].dropna().copy()
+        keep_cols = ["team_a", "team_b", "score_a", "score_b"]
+        if "date" in X.columns:
+            keep_cols = keep_cols + ["date"]
+        df = X[keep_cols].dropna(subset=["team_a", "team_b", "score_a", "score_b"]).copy()
         df["score_a"] = pd.to_numeric(df["score_a"], errors="coerce")
         df["score_b"] = pd.to_numeric(df["score_b"], errors="coerce")
-        df = df.dropna()
+        df = df.dropna(subset=["score_a", "score_b"])
         if df.empty:
             self.fit_result = PoissonFit(0.0, 0.20, {}, {})
             self.is_fitted = True
             return self
 
-        avg_goals = (df["score_a"].mean() + df["score_b"].mean()) / 2.0
+        if self.time_decay_xi > 0 and "date" in df.columns:
+            dates = pd.to_datetime(df["date"], errors="coerce")
+            ref_date = dates.max()
+            days = (ref_date - dates).dt.days.clip(lower=0).fillna(0).astype(float)
+            df["weight"] = np.exp(-self.time_decay_xi * days)
+        else:
+            df["weight"] = 1.0
+
+        w = df["weight"]
+        avg_goals = float(
+            ((df["score_a"] * w).sum() + (df["score_b"] * w).sum()) / (2.0 * w.sum())
+        )
         avg_goals = max(avg_goals, 0.3)
 
         gf = pd.concat(
             [
-                df[["team_a", "score_a"]].rename(columns={"team_a": "team", "score_a": "goals"}),
-                df[["team_b", "score_b"]].rename(columns={"team_b": "team", "score_b": "goals"}),
+                df[["team_a", "score_a", "weight"]].rename(
+                    columns={"team_a": "team", "score_a": "goals"}
+                ),
+                df[["team_b", "score_b", "weight"]].rename(
+                    columns={"team_b": "team", "score_b": "goals"}
+                ),
             ]
         )
         ga = pd.concat(
             [
-                df[["team_a", "score_b"]].rename(columns={"team_a": "team", "score_b": "goals"}),
-                df[["team_b", "score_a"]].rename(columns={"team_b": "team", "score_a": "goals"}),
+                df[["team_a", "score_b", "weight"]].rename(
+                    columns={"team_a": "team", "score_b": "goals"}
+                ),
+                df[["team_b", "score_a", "weight"]].rename(
+                    columns={"team_b": "team", "score_a": "goals"}
+                ),
             ]
         )
-        attack = (gf.groupby("team")["goals"].mean() / avg_goals).to_dict()
-        defense = (ga.groupby("team")["goals"].mean() / avg_goals).to_dict()
 
-        ha = float((df["score_a"].mean() - df["score_b"].mean()) / max(avg_goals, 0.1))
+        def _weighted_mean(group: pd.DataFrame) -> float:
+            ws = group["weight"].sum()
+            if ws <= 0:
+                return 1.0
+            return float((group["goals"] * group["weight"]).sum() / ws)
+
+        attack = {
+            team: _weighted_mean(g) / avg_goals
+            for team, g in gf.groupby("team")
+        }
+        defense = {
+            team: _weighted_mean(g) / avg_goals
+            for team, g in ga.groupby("team")
+        }
+
+        ha = float(
+            ((df["score_a"] - df["score_b"]) * w).sum()
+            / (w.sum() * max(avg_goals, 0.1))
+        )
 
         self.fit_result = PoissonFit(
             intercept=float(np.log(avg_goals)),
@@ -97,7 +150,12 @@ class PoissonScoreModel(BaseOutcomeModel):
             defense=defense,
         )
         self.is_fitted = True
-        logger.info("Poisson model fitted on %d matches", len(df))
+        logger.info(
+            "Poisson model fitted on %d matches (xi=%.4f, skellam=%s)",
+            len(df),
+            self.time_decay_xi,
+            self.use_skellam,
+        )
         return self
 
     def expected_goals(self, team_a: str, team_b: str, neutral: bool = True) -> tuple[float, float]:
@@ -164,11 +222,30 @@ class PoissonScoreModel(BaseOutcomeModel):
     def outcome_probabilities(
         self, team_a: str, team_b: str, neutral: bool = True
     ) -> np.ndarray:
-        """Return per-outcome probabilities derived from the scoreline grid."""
-        matrix = self.score_matrix(team_a, team_b, neutral=neutral)
-        p_home = float(np.triu(matrix, k=1).sum())
-        p_draw = float(np.trace(matrix))
-        p_away = float(np.tril(matrix, k=-1).sum())
+        """Return per-outcome probabilities for the H/D/A market.
+
+        Two engines are available, controlled by ``self.use_skellam``:
+
+        * **Skellam** (default, Karlis & Ntzoufras 2009): models the goal
+          difference ``D = G_a - G_b`` directly as a Skellam distribution with
+          parameters ``(lambda_a, lambda_b)``. ``p_home = P(D > 0)``,
+          ``p_draw = P(D = 0)``, ``p_away = P(D < 0)``. Better calibrated for
+          draws than the Dixon-Coles tau correction on the score grid.
+        * **Score-grid + Dixon-Coles** (legacy): integrates the scoreline
+          matrix where ``matrix[i, j] = P(team_a scores i, team_b scores j)``;
+          team_a wins for ``i > j`` (lower triangle), team_b for ``j > i``
+          (upper triangle), draws on the diagonal.
+        """
+        if self.use_skellam:
+            lam_a, lam_b = self.expected_goals(team_a, team_b, neutral=neutral)
+            p_draw = float(skellam.pmf(0, lam_a, lam_b))
+            p_home = float(1.0 - skellam.cdf(0, lam_a, lam_b))
+            p_away = float(skellam.cdf(-1, lam_a, lam_b))
+        else:
+            matrix = self.score_matrix(team_a, team_b, neutral=neutral)
+            p_home = float(np.tril(matrix, k=-1).sum())
+            p_draw = float(np.trace(matrix))
+            p_away = float(np.triu(matrix, k=1).sum())
         total = p_home + p_draw + p_away
         if total <= 0:
             return np.array([1 / 3, 1 / 3, 1 / 3])
