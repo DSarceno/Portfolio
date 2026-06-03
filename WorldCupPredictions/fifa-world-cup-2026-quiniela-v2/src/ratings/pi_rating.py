@@ -106,3 +106,18 @@ class PIRating:
         return pd.DataFrame(records).sort_values("pi_combined", ascending=False).reset_index(
             drop=True
         )
+
+    def __getstate__(self) -> dict:
+        """Return picklable state (defaultdicts converted to plain dicts)."""
+        return {
+            "config": self.config,
+            "home_rating": dict(self.home_rating),
+            "away_rating": dict(self.away_rating),
+        }
+
+    def __setstate__(self, state: dict) -> None:
+        """Rebuild the defaultdicts on unpickle."""
+        self.config = state["config"]
+        base = self.config.base
+        self.home_rating = defaultdict(lambda: base, state["home_rating"])
+        self.away_rating = defaultdict(lambda: base, state["away_rating"])

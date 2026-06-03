@@ -1,4 +1,4 @@
-"""Predict every group-stage match."""
+"""Predict every upcoming group-stage match."""
 
 from __future__ import annotations
 
@@ -9,32 +9,36 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import pandas as pd
-
-from src.data.data_loader import DataLoader
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
 from src.models.poisson_model import PoissonScoreModel
+from src.prediction.feature_builder import (
+    build_inference_feature_matrix,
+    filter_upcoming,
+)
 from src.prediction.predictor import MatchPredictor
+from src.utils.config import load_config
 from src.utils.io import load_pickle, save_csv
 from src.utils.logging_config import get_logger, setup_logging
 
 
 def main() -> int:
-    """Predict every group-stage fixture and write a CSV."""
+    """Predict every upcoming group-stage fixture and write a CSV."""
     setup_logging(log_file="logs/prediction/predict_group_stage.log")
     logger = get_logger(__name__)
+    config = load_config()
+    tournament_year = config.get("tournament.year", 2026)
 
-    df = DataLoader().load_matches()
-    if df.empty:
-        logger.warning("No matches available to predict")
-        return 0
+    feature_matrix = build_inference_feature_matrix(tournament_year=tournament_year)
+    if feature_matrix.empty:
+        logger.error("Feature matrix is empty; aborting")
+        return 1
 
-    group_mask = df["stage"].astype(str).str.lower().str.contains("group", na=False)
-    fixtures = df[group_mask & df["score_a"].isna()].copy()
+    fixtures = filter_upcoming(feature_matrix, stage_substr="group")
     if fixtures.empty:
-        logger.warning("No upcoming group-stage matches; falling back to all unplayed")
-        fixtures = df[df["score_a"].isna()].copy()
+        logger.warning("No upcoming matches to predict")
+        return 0
+    logger.info("Predicting %d upcoming group-stage fixtures", len(fixtures))
 
     models_dir = Path("models")
     try:
@@ -63,7 +67,13 @@ def main() -> int:
         poisson_model=poisson,
         calibrator=calibrator,
     )
-    preds = predictor.predict_matches(fixtures[["team_a", "team_b"]])
+    preds = predictor.predict_matches(fixtures)
+
+    if "date" in fixtures.columns:
+        preds.insert(0, "date", fixtures["date"].astype(str).values)
+    if "stage" in fixtures.columns:
+        preds.insert(1, "stage", fixtures["stage"].astype(str).values)
+
     save_csv(preds, "outputs/predictions/group_stage_predictions.csv")
     logger.info("Wrote group_stage_predictions.csv (%d rows)", len(preds))
     return 0

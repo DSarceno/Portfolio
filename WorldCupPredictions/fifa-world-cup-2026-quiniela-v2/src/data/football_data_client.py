@@ -21,6 +21,7 @@ EXPECTED_COLUMNS = [
     "competition",
     "season",
     "stage",
+    "group",
     "home_team",
     "away_team",
     "home_score",
@@ -146,6 +147,8 @@ class FootballDataClient:
         rows: list[dict] = []
         for match in payload.get("matches", []):
             score = match.get("score", {}).get("fullTime", {}) or {}
+            raw_group = match.get("group") or ""
+            group = str(raw_group).upper().replace("GROUP_", "").replace("GROUP ", "").strip()
             rows.append(
                 {
                     "match_id": match.get("id"),
@@ -153,6 +156,7 @@ class FootballDataClient:
                     "competition": competition,
                     "season": match.get("season", {}).get("startDate", "")[:4],
                     "stage": match.get("stage", ""),
+                    "group": group,
                     "home_team": match.get("homeTeam", {}).get("name"),
                     "away_team": match.get("awayTeam", {}).get("name"),
                     "home_score": score.get("home"),

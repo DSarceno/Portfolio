@@ -105,6 +105,15 @@ def simulate_knockout(
     for stage in stages:
         if len(current) < 2:
             break
+        if len(current) % 2 == 1:
+            logger.warning(
+                "Odd number of teams (%d) entering %s; advancing the last team without playing",
+                len(current),
+                stage,
+            )
+            bye = current.pop()
+        else:
+            bye = None
         next_round: list[str] = []
         round_pairs = [(current[i], current[i + 1]) for i in range(0, len(current), 2)]
         for a, b in round_pairs:
@@ -115,6 +124,8 @@ def simulate_knockout(
                 semifinal_winners.append(entry.winner)
                 loser = a if entry.winner == b else b
                 semifinal_losers.append(loser)
+        if bye is not None:
+            next_round.append(bye)
         next_label = {"r32": "r16", "r16": "qf", "qf": "sf", "sf": "final"}[stage]
         _record_round(next_round, next_label)
         current = next_round

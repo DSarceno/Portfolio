@@ -33,7 +33,11 @@ def compute_match_features(
         return pd.DataFrame()
 
     feats = matches.copy()
+    feats = feats.dropna(subset=["team_a", "team_b"]).copy()
+    feats["team_a"] = feats["team_a"].astype(str)
+    feats["team_b"] = feats["team_b"].astype(str)
     feats["date"] = pd.to_datetime(feats["date"], errors="coerce")
+    feats = feats.dropna(subset=["date"]).reset_index(drop=True)
 
     team_features = team_features.set_index("team")
 

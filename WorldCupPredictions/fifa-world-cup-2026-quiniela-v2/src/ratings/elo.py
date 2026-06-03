@@ -208,3 +208,13 @@ class EloRating:
     def to_series(self, teams: Iterable[str]) -> pd.Series:
         """Return Elo ratings for the given iterable of team names."""
         return pd.Series({t: self.ratings[t] for t in teams}, name="elo")
+
+    def __getstate__(self) -> dict:
+        """Return picklable state (defaultdict converted to plain dict)."""
+        return {"config": self.config, "ratings": dict(self.ratings)}
+
+    def __setstate__(self, state: dict) -> None:
+        """Rebuild the defaultdict on unpickle."""
+        self.config = state["config"]
+        base = self.config.base
+        self.ratings = defaultdict(lambda: base, state["ratings"])

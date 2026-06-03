@@ -46,6 +46,7 @@ class DataLoader:
                 "competition",
                 "season",
                 "stage",
+                "group",
                 "team_a",
                 "team_b",
                 "score_a",

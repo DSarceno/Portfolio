@@ -118,10 +118,20 @@ def _add_strategy_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+_METADATA_NUMERIC_COLUMNS = {"score_a", "score_b", "match_id"}
+
+
 def _fillna_numeric(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill numeric NaNs with 0.0 (after diff computation finishes)."""
+    """Fill numeric NaNs with 0.0, preserving metadata columns.
+
+    Metadata columns such as ``score_a`` / ``score_b`` must stay NaN for
+    unplayed fixtures; the simulator relies on that signal to detect them.
+    """
     out = df.copy()
-    numeric_cols = out.select_dtypes(include="number").columns
+    numeric_cols = [
+        c for c in out.select_dtypes(include="number").columns
+        if c not in _METADATA_NUMERIC_COLUMNS
+    ]
     out[numeric_cols] = out[numeric_cols].fillna(0.0)
     return out
 

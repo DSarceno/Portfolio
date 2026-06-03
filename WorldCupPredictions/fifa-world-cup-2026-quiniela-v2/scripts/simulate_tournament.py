@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -12,10 +13,10 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 import pandas as pd
 
-from src.data.data_loader import DataLoader
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
 from src.models.poisson_model import PoissonScoreModel
+from src.prediction.feature_builder import build_inference_feature_matrix
 from src.prediction.predictor import MatchPredictor
 from src.simulation.tournament_simulator import TournamentSimulator
 from src.utils.config import load_config
@@ -23,23 +24,136 @@ from src.utils.io import load_pickle, save_csv
 from src.utils.logging_config import get_logger, setup_logging
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse the command-line arguments."""
+    parser = argparse.ArgumentParser(description="Monte-Carlo simulate the tournament")
+    parser.add_argument(
+        "--n-runs",
+        type=int,
+        default=None,
+        help="Number of full tournament runs (default: simulation.n_runs from config).",
+    )
+    parser.add_argument(
+        "--competition",
+        type=str,
+        default="WC",
+        help="Competition code that defines the tournament (default: WC).",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable the pair-probability cache (slower; only useful for debugging).",
+    )
+    parser.add_argument(
+        "--no-vectorized",
+        action="store_true",
+        help="Disable the vectorized group-stage engine (slower; debugging only).",
+    )
+    return parser.parse_args()
+
+
+def _select_fixtures(
+    feature_matrix: pd.DataFrame,
+    tournament_year: int,
+    competition: str,
+) -> pd.DataFrame:
+    """Filter the feature matrix to upcoming tournament group fixtures."""
+    df = feature_matrix.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    mask_year = df["date"].dt.year == tournament_year
+    mask_comp = df["competition"].astype(str).str.upper() == competition.upper()
+    if "outcome" in df.columns:
+        mask_unplayed = df["outcome"].isna()
+    else:
+        mask_unplayed = df["score_a"].isna()
+
+    stage_upper = df["stage"].astype(str).str.upper()
+    mask_group_stage = stage_upper.str.contains("GROUP", na=False) | (
+        df.get("group", pd.Series([""] * len(df))).astype(str).str.strip() != ""
+    )
+
+    fixtures = df[mask_year & mask_comp & mask_unplayed & mask_group_stage].copy()
+    return fixtures
+
+
+def _normalize_group_column(fixtures: pd.DataFrame) -> pd.DataFrame:
+    """Ensure each fixture has a non-empty ``group`` identifier."""
+    out = fixtures.copy()
+    if "group" not in out.columns:
+        out["group"] = ""
+
+    g = (
+        out["group"]
+        .astype(str)
+        .str.upper()
+        .str.replace("GROUP_", "", regex=False)
+        .str.replace("GROUP ", "", regex=False)
+        .str.strip()
+    )
+    needs_fallback = g.eq("") | g.eq("NAN") | g.eq("NONE")
+    if needs_fallback.any():
+        stage_fallback = (
+            out.loc[needs_fallback, "stage"]
+            .astype(str)
+            .str.upper()
+            .str.replace("GROUP_", "", regex=False)
+            .str.replace("GROUP ", "", regex=False)
+            .str.strip()
+        )
+        g.loc[needs_fallback] = stage_fallback
+    out["group"] = g.where(g != "", "X")
+    return out
+
+
 def main() -> int:
     """Simulate the tournament and persist aggregated probabilities."""
     setup_logging(log_file="logs/prediction/simulate_tournament.log")
     logger = get_logger(__name__)
     config = load_config()
-    n_runs = int(config.get("simulation.n_runs", 10000))
+    args = parse_args()
 
-    df = DataLoader().load_matches()
-    if df.empty:
-        logger.warning("No matches available to simulate")
-        return 0
-    fixtures = df[df["stage"].astype(str).str.lower().str.contains("group", na=False)].copy()
+    n_runs = args.n_runs or int(config.get("simulation.n_runs", 2000))
+    tournament_year = int(config.get("tournament.year", 2026))
+
+    feature_matrix = build_inference_feature_matrix(tournament_year=tournament_year)
+    if feature_matrix.empty:
+        logger.error("Feature matrix is empty; aborting")
+        return 1
+
+    fixtures = _select_fixtures(feature_matrix, tournament_year, args.competition)
     if fixtures.empty:
-        logger.warning("No group-stage fixtures available; aborting")
-        return 0
-    if "group" not in fixtures.columns:
-        fixtures["group"] = "A"
+        logger.error(
+            "No upcoming %s %d group-stage fixtures found in the canonical table. "
+            "Run: python scripts/bootstrap_historical_data.py --competitions %s "
+            "--start-year %d --end-year %d --no-kaggle",
+            args.competition,
+            tournament_year,
+            args.competition,
+            tournament_year,
+            tournament_year,
+        )
+        return 1
+
+    fixtures = _normalize_group_column(fixtures)
+    n_groups = fixtures["group"].nunique()
+    logger.info(
+        "Selected %d group-stage fixtures across %d groups (%s %d)",
+        len(fixtures),
+        n_groups,
+        args.competition,
+        tournament_year,
+    )
+    logger.info("Group distribution: %s", fixtures["group"].value_counts().to_dict())
+
+    if n_groups < 2:
+        logger.error(
+            "Only %d distinct group(s) detected; cannot run a meaningful simulation. "
+            "Ensure the football-data.org payload included the 'group' field, or "
+            "provide a manual fixture CSV with groups A..L populated.",
+            n_groups,
+        )
+        return 1
 
     models_dir = Path("models")
     try:
@@ -67,7 +181,13 @@ def main() -> int:
         pred = predictor.predict_single(a, b)
         return np.array([pred.p_home, pred.p_draw, pred.p_away])
 
-    simulator = TournamentSimulator(fixtures=fixtures, predict_fn=_predict_pair)
+    simulator = TournamentSimulator(
+        fixtures=fixtures,
+        predict_fn=_predict_pair,
+        cache_predictions=not args.no_cache,
+        vectorized_group_stage=not args.no_vectorized,
+    )
+    logger.info("Running %d tournament simulations", n_runs)
     summary = simulator.run(n_runs=n_runs)
 
     save_csv(summary.qualification_probs, "outputs/simulations/tournament_probabilities.csv")

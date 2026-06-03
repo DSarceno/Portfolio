@@ -41,6 +41,12 @@ SOURCES: dict[str, SourceSpec] = {
         fallback_to_manual=False,
         description="Manual CSV overrides located in data/raw/manual.",
     ),
+    "kaggle_international": SourceSpec(
+        name="kaggle_international",
+        requires_api_key=False,
+        fallback_to_manual=False,
+        description="Kaggle 'International football results 1872-2024' dataset.",
+    ),
 }
 
 

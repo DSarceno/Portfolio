@@ -23,6 +23,11 @@ data:
     manual_csv:
       enabled: true
       dir: "data/raw/manual"
+    kaggle_international:
+      enabled: true
+      csv_path: "data/raw/kaggle/results.csv"
+      include_friendlies: true
+      include_qualifications: true
 
 tournament:
   year: 2026
@@ -42,7 +47,7 @@ training:
   retrain_on_update: true
 
 simulation:
-  n_runs: 10000
+  n_runs: 2000
   extra_time_enabled: true
   penalties_enabled: true
 

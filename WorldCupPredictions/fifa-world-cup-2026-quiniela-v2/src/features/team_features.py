@@ -32,9 +32,9 @@ def compute_team_features(
         DataFrame indexed by ``team`` with strength / experience features.
     """
     confederation_map = confederation_map or {}
-    teams = pd.Index(
-        sorted(set(matches.get("team_a", [])).union(matches.get("team_b", [])))
-    )
+    team_a = matches.get("team_a", pd.Series(dtype=str)).dropna().astype(str)
+    team_b = matches.get("team_b", pd.Series(dtype=str)).dropna().astype(str)
+    teams = pd.Index(sorted(set(team_a).union(team_b)))
     feats = pd.DataFrame(index=teams)
     feats.index.name = "team"
 

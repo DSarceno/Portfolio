@@ -120,3 +120,22 @@ class FormRating:
         return pd.DataFrame(records).sort_values("form_score", ascending=False).reset_index(
             drop=True
         )
+
+    def __getstate__(self) -> dict:
+        """Return picklable state (defaultdicts converted to plain dicts of lists)."""
+        return {
+            "config": self.config,
+            "results": {k: list(v) for k, v in self.results.items()},
+            "goal_diffs": {k: list(v) for k, v in self.goal_diffs.items()},
+        }
+
+    def __setstate__(self, state: dict) -> None:
+        """Rebuild the defaultdicts of deques on unpickle."""
+        self.config = state["config"]
+        window = self.config.window
+        self.results = defaultdict(lambda: deque(maxlen=window))
+        for k, v in state["results"].items():
+            self.results[k] = deque(v, maxlen=window)
+        self.goal_diffs = defaultdict(lambda: deque(maxlen=window))
+        for k, v in state["goal_diffs"].items():
+            self.goal_diffs[k] = deque(v, maxlen=window)

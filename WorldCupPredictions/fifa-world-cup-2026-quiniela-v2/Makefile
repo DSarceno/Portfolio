@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean lint format test test-cov bootstrap train predict simulate update api docker-build docker-up
+.PHONY: help install install-dev clean lint format test test-cov bootstrap kaggle ratings pipeline train predict picks simulate update api docker-build docker-up
 
 PY ?= python
 
@@ -50,6 +50,9 @@ test-cov:
 
 bootstrap:
 	$(PY) scripts/bootstrap_historical_data.py
+
+kaggle:
+	$(PY) scripts/import_kaggle_history.py --csv data/raw/kaggle/results.csv
 
 ratings:
 	$(PY) scripts/build_ratings.py

@@ -87,6 +87,9 @@ class MatchPredictor:
 
         Args:
             X: Feature DataFrame with at least ``team_a`` and ``team_b`` columns.
+                If all engineered feature columns are present, multinomial and
+                XGBoost contribute; otherwise the predictor falls back to
+                ratings + Poisson only.
 
         Returns:
             Probability matrix ``(n_samples, 3)`` summing to 1 row-wise.
@@ -95,8 +98,28 @@ class MatchPredictor:
         xgb = self.outcome_models.get("xgboost")
         ratings_p = self._ratings_probabilities(X)
         poisson_p = self._poisson_probabilities(X)
-        mn_p = mn.predict_proba(X) if mn is not None and mn.is_fitted else None
-        xgb_p = xgb.predict_proba(X) if xgb is not None and xgb.is_fitted else None
+
+        mn_p = None
+        if mn is not None and mn.is_fitted:
+            if all(c in X.columns for c in mn.feature_columns):
+                mn_p = mn.predict_proba(X)
+            else:
+                logger.debug(
+                    "Multinomial skipped: missing %d/%d feature columns",
+                    sum(c not in X.columns for c in mn.feature_columns),
+                    len(mn.feature_columns),
+                )
+
+        xgb_p = None
+        if xgb is not None and xgb.is_fitted:
+            if all(c in X.columns for c in xgb.feature_columns):
+                xgb_p = xgb.predict_proba(X)
+            else:
+                logger.debug(
+                    "XGBoost skipped: missing %d/%d feature columns",
+                    sum(c not in X.columns for c in xgb.feature_columns),
+                    len(xgb.feature_columns),
+                )
 
         if not any(p is not None for p in (ratings_p, poisson_p, mn_p, xgb_p)):
             logger.warning("No fitted models available; returning uniform probabilities")
