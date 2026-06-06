@@ -14,13 +14,13 @@ python --version          # confirm >= 3.10
 Create and activate a virtual environment:
 
 ```bash
-python -m venv .venv
+python -m venv simu
 # Windows PowerShell
-.venv\Scripts\Activate.ps1
+simu\Scripts\Activate.ps1
 # Windows cmd
-.venv\Scripts\activate.bat
+simu\Scripts\activate.bat
 # macOS / Linux
-source .venv/bin/activate
+source simu/bin/activate
 ```
 
 Install the package:
@@ -119,6 +119,15 @@ simgen generate --from-library lorenz-system --run --plot
 
 # Run the example walkthrough
 python examples/example_usage.py
+```
+
+On Windows you can verify the whole pipeline with a single command using the
+root launcher (it activates the `simu` venv, installs `simgen` if needed, then
+generates → runs → plots, and renders Manim / compiles LaTeX when those tools
+are present):
+
+```bat
+run_all.bat
 ```
 
 If all of the above succeed, your installation is complete. For problems, see

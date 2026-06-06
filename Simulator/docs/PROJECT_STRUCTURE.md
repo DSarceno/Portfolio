@@ -6,6 +6,7 @@ A directory-by-directory explanation of the repository.
 Simulator/
 ├── README.md                       Project overview and quick start.
 ├── LICENSE                         MIT license.
+├── run_all.bat                     Windows one-command full-pipeline launcher.
 ├── requirements.txt                Core pip dependencies.
 ├── environment.yml                 Conda environment (incl. ffmpeg, manim).
 ├── pyproject.toml                  Packaging, entry point, tool config.

@@ -19,6 +19,19 @@ ls generated/double-pendulum
 You will find `simulation.py`, `plot.py`, `scene.py`, `report.tex`,
 `README.md`, `spec.json`, and (after `--plot`) `figure_*.png`.
 
+### One command (Windows)
+
+To run the entire pipeline at once, use the root launcher. It activates the
+`simu` virtual environment, installs `simgen` if needed, then generates, runs
+and plots the project — and renders the Manim animation / compiles the LaTeX
+report when FFmpeg and LaTeX are available (otherwise those steps are skipped):
+
+```bat
+run_all.bat                            REM default offline demo (lorenz-system)
+run_all.bat -l double-pendulum         REM any built-in library phenomenon
+run_all.bat "A driven, damped pendulum showing period doubling"   REM prompt (quote it)
+```
+
 ## Generating from a prompt (LLM)
 
 With an `ANTHROPIC_API_KEY` configured (see the installation guide):

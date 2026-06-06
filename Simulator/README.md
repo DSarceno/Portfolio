@@ -85,6 +85,7 @@ for the architecture.
 Simulator/
 ├── README.md                       # this file
 ├── LICENSE                         # MIT
+├── run_all.bat                     # Windows one-command full-pipeline launcher
 ├── requirements.txt                # core dependencies
 ├── environment.yml                 # conda environment
 ├── pyproject.toml                  # packaging + tooling config
@@ -120,12 +121,12 @@ Quick version (full instructions in
 [`docs/INSTALLATION_GUIDE.md`](docs/INSTALLATION_GUIDE.md)):
 
 ```bash
-# 1. Create and activate a virtual environment
-python -m venv .venv
+# 1. Create and activate a virtual environment (named `simu`)
+python -m venv simu
 # Windows PowerShell:
-.venv\Scripts\Activate.ps1
+simu\Scripts\Activate.ps1
 # Linux/macOS:
-source .venv/bin/activate
+source simu/bin/activate
 
 # 2. Install the package (editable) with dev tools
 pip install -e ".[dev]"
@@ -157,6 +158,24 @@ simgen generate --from-library double-pendulum --run --plot
 # Show resolved configuration
 simgen info
 ```
+
+### One-command full run (Windows)
+
+The [`run_all.bat`](run_all.bat) launcher in the project root runs the whole
+pipeline in one shot: it activates the `simu` virtual environment, ensures
+`simgen` is installed, then **generates → runs → plots** the project and — when
+the system tools are available — **renders the Manim animation** and **compiles
+the LaTeX report**. If FFmpeg or LaTeX are missing, those steps are skipped
+gracefully (the rest still runs).
+
+```bat
+run_all.bat                                       REM default offline demo (lorenz-system)
+run_all.bat -l double-pendulum                    REM any built-in library phenomenon
+run_all.bat "The Lorenz attractor, sigma=10"      REM free-text prompt (needs API key; quote it)
+```
+
+It expects the virtual environment at `simu\`. Free-text prompts must be quoted;
+`-l <slug>` and the no-argument default are fully offline.
 
 ### Python API
 

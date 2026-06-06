@@ -47,6 +47,7 @@ src/simgen/
 | `src/simgen/numerical_methods/integrators.py` | `integrate()` + method registry | add solver | sync spec.VALID_METHODS + renderer._SCIPY_METHOD |
 | `src/simgen/llm/*` | prompt→spec via Claude | change schema/prompt | spec parse failures |
 | `src/simgen/cli.py` | CLI | add command/flag | UX |
+| `run_all.bat` | Windows full-pipeline launcher (venv `simu`) | change run UX | low |
 | `reports/report.tex`,`bibliography.bib` | umbrella report | docs/refs | latex build |
 | `tests/` | 51 tests, offline | any code change | CI gate |
 | `pyproject.toml` | packaging, extras, tool cfg | deps/entrypoints | install |
@@ -110,6 +111,7 @@ Files: `llm/generator.py`,`llm/client.py`,`llm/schema.py` → `simulations/spec.
 
 ## BUILD_COMMANDS
 ```bash
+python -m venv simu              # canonical venv name (gitignored); activate before install
 pip install -e ".[dev]"          # core+tests ; extras: llm, animation, all
 pytest -q                        # 51 tests, offline
 ruff check src tests ; black src tests
@@ -120,6 +122,7 @@ python examples/example_usage.py
 manim -qh generated/<slug>/scene.py <Class>Scene
 cd generated/<slug> && python plot.py && pdflatex report.tex && pdflatex report.tex
 cd reports && pdflatex report.tex && bibtex report && pdflatex report.tex && pdflatex report.tex
+run_all.bat [-l <slug> | "<prompt>"]   # Windows: one-shot generate→run→plot(+manim/latex if present)
 ```
 
 ## CRITICAL_FILES

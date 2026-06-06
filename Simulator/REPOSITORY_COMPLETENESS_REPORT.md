@@ -84,7 +84,9 @@ production-ready way with graceful degradation (see deviations at the end).
 ### Build System
 - [x] Complete — `requirements.txt`, `environment.yml`, `pyproject.toml`
   (editable install, `simgen` console script, extras `llm`/`animation`/`dev`/
-  `all`), `.env.example`.
+  `all`), `.env.example`, and `run_all.bat` (Windows one-command full-pipeline
+  launcher: activate `simu` venv → install → generate → run → plot → optional
+  Manim render + LaTeX compile).
 
 ### Rendering Instructions
 - [x] Complete — `docs/RENDERING_GUIDE.md` (low/high/production/batch) and
