@@ -1,0 +1,108 @@
+"""Manim animation for: {{ spec.name }}.
+
+Standalone Manim Community scene. Render with, e.g.:
+
+    manim -pql scene.py {{ class_name }}Scene     # quick preview
+    manim -qh scene.py {{ class_name }}Scene      # high quality
+
+Requires Manim, FFmpeg and a LaTeX installation.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+import numpy as np
+from manim import (  # type: ignore[import-not-found]
+    BLUE,
+    DEGREES,
+    UP,
+    YELLOW,
+    Create,
+    Dot,
+    Text,
+    VMobject,
+    linear,
+{% if animation.kind == "phase3d" %}
+    ThreeDScene,
+{% else %}
+    Scene,
+{% endif %}
+)
+
+# Make the sibling ``simulation`` module importable when Manim runs this file.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from simulation import STATE_SYMBOLS, simulate  # noqa: E402
+
+ANIMATION = {{ animation_repr }}
+MAX_POINTS = 600
+
+
+def _column(t: np.ndarray, states: np.ndarray, symbol: str) -> np.ndarray:
+    """Return the trajectory for ``symbol`` (or time for ``"t"``)."""
+    if symbol == "t":
+        return t
+    return states[:, STATE_SYMBOLS.index(symbol)]
+
+
+def _downsample(*arrays: np.ndarray) -> list[np.ndarray]:
+    """Uniformly downsample equal-length arrays to at most ``MAX_POINTS``."""
+    n = arrays[0].shape[0]
+    if n <= MAX_POINTS:
+        return list(arrays)
+    idx = np.linspace(0, n - 1, MAX_POINTS).astype(int)
+    return [a[idx] for a in arrays]
+
+
+def _fit(points: np.ndarray, target_radius: float = 3.0) -> np.ndarray:
+    """Center and isotropically scale points to fit the Manim frame."""
+    center = points.mean(axis=0)
+    centered = points - center
+    max_abs = np.max(np.abs(centered))
+    if max_abs == 0.0:
+        return centered
+    return centered * (target_radius / max_abs)
+
+{% if animation.kind == "phase3d" %}
+
+class {{ class_name }}Scene(ThreeDScene):
+    """Animate the 3-D phase-space trajectory of {{ spec.name }}."""
+
+    def construct(self) -> None:
+        self.set_camera_orientation(phi=70 * DEGREES, theta=45 * DEGREES)
+        t, states = simulate()
+        xs, ys, zs = _downsample(
+            _column(t, states, ANIMATION["x"]),
+            _column(t, states, ANIMATION["y"]),
+            _column(t, states, ANIMATION["z"]),
+        )
+        pts = _fit(np.column_stack([xs, ys, zs]))
+        path = VMobject(color=BLUE)
+        path.set_points_smoothly([np.array([p[0], p[1], p[2]]) for p in pts])
+        dot = Dot(color=YELLOW).move_to(path.get_start())
+        self.add(dot)
+        self.begin_ambient_camera_rotation(rate=0.15)
+        self.play(Create(path), run_time=10, rate_func=linear)
+        self.wait(1.0)
+{% else %}
+
+class {{ class_name }}Scene(Scene):
+    """Animate the 2-D trajectory of {{ spec.name }}."""
+
+    def construct(self) -> None:
+        t, states = simulate()
+        xs, ys = _downsample(
+            _column(t, states, ANIMATION["x"]),
+            _column(t, states, ANIMATION["y"]),
+        )
+        pts = _fit(np.column_stack([xs, ys]))
+        path = VMobject(color=BLUE)
+        path.set_points_smoothly([np.array([p[0], p[1], 0.0]) for p in pts])
+        if ANIMATION["title"]:
+            self.add(Text(ANIMATION["title"], font_size=32).to_edge(UP))
+        dot = Dot(color=YELLOW).move_to(path.get_start())
+        self.add(dot)
+        self.play(Create(path), run_time=8, rate_func=linear)
+        self.wait(1.0)
+{% endif %}

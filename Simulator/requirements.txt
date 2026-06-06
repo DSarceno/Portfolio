@@ -1,0 +1,24 @@
+# Core runtime dependencies for the simgen framework.
+# Install with: pip install -r requirements.txt
+#
+# These are the minimum packages required to run simulations, generate
+# plots, render LaTeX reports and execute the offline test suite.
+
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+jinja2>=3.1
+
+# --- Optional features ----------------------------------------------------
+# LLM-backed prompt -> simulation generation (requires an Anthropic API key).
+# Uncomment or install separately with: pip install "simgen[llm]"
+anthropic>=0.39
+
+# Manim animation rendering (requires a system FFmpeg + LaTeX installation).
+# Uncomment or install separately with: pip install "simgen[animation]"
+manim>=0.18
+
+# --- Development / testing -------------------------------------------------
+# Install with: pip install "simgen[dev]"
+pytest>=7.4
+pytest-cov>=4.1

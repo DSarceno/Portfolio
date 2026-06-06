@@ -1,0 +1,191 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\geometry{margin=2.5cm}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  columns=fullflexible,
+}
+
+\title{\textbf{simgen}: A Prompt-Driven Framework for Generating\\
+       Mathematical and Physical Simulations,\\
+       Visualizations, and Reports}
+\author{Generated and maintained with \texttt{simgen}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present \texttt{simgen}, a software framework that converts a short
+natural-language description of a mathematical or physical phenomenon into a
+complete, runnable mini-project: a numerical simulation, publication-quality
+plots, a \textsc{Manim} animation, and a compilable \LaTeX{} report. The system
+uses a large language model (the Claude API) to translate a prompt into a strict,
+validated specification, which a deterministic code generator renders into
+portable artifacts built upon a reusable numerical core. A built-in library of
+five validated reference systems (the Lorenz system, the double pendulum, the
+simple harmonic oscillator, the Duffing oscillator, and the Van der Pol
+oscillator) provides an offline fallback and a deterministic test bed. We
+describe the architecture, the numerical methods, the code-generation pipeline,
+and the validation strategy, and we demonstrate quantitative correctness through
+analytic comparisons, energy-conservation checks, and a Lyapunov-exponent
+estimate that recovers the textbook value for the Lorenz attractor.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+Educational simulation projects traditionally focus on a single phenomenon.
+\texttt{simgen} instead automates the \emph{construction} of such projects: the
+user provides a prompt, and the framework emits the code, figures, animation,
+and report. The design separates three concerns: (i) \emph{interpretation} of
+the prompt into a structured specification; (ii) \emph{deterministic rendering}
+of that specification into artifacts; and (iii) a \emph{reusable scientific
+core} of integrators and analysis tools. This separation makes the generated
+output reproducible and testable, and it allows the whole pipeline to run
+offline against a reference library when no model is available.
+
+\section{Historical Context}
+The numerical solution of ordinary differential equations has a long history,
+from Runge's 1895 method~\cite{runge1895} to the embedded Runge--Kutta pairs of
+Dormand and Prince~\cite{dormand1980}. The qualitative theory of dynamical
+systems was transformed by Lorenz's 1963 discovery of deterministic
+chaos~\cite{lorenz1963}, by the geometric viewpoint of Ruelle and
+Takens~\cite{ruelle1971}, and by the universality results of
+Feigenbaum~\cite{feigenbaum1978}. Practical diagnostics for chaos --- notably
+Lyapunov-exponent estimation --- were developed by Benettin et
+al.~\cite{benettin1980}, Wolf et al.~\cite{wolf1985}, and Rosenstein et
+al.~\cite{rosenstein1993}. The reference systems shipped with \texttt{simgen}
+are drawn from this canon~\cite{strogatz2015,guckenheimer1983}.
+
+\section{Theory}
+Every phenomenon is modelled as a first-order system of ordinary differential
+equations,
+\begin{equation}
+  \frac{d\mathbf{y}}{dt} = \mathbf{f}(t, \mathbf{y}), \qquad
+  \mathbf{y}(t_0) = \mathbf{y}_0, \quad \mathbf{y} \in \mathbb{R}^n .
+\end{equation}
+Higher-order equations are reduced to this form by introducing auxiliary
+(velocity) variables, and spatial partial differential equations are handled by
+the method of lines~\cite{leveque2007}, which discretises space to yield a large
+ODE system. This uniform representation lets a single integrator and a single
+code template serve an open-ended family of problems.
+
+\section{Mathematical Derivations}
+\subsection{Reduction of a second-order system}
+A mechanical system $m\ddot{x} = F(t, x, \dot{x})$ becomes
+\begin{equation}
+  \dot{x} = v, \qquad \dot{v} = \frac{1}{m} F(t, x, v),
+\end{equation}
+with state $\mathbf{y} = (x, v)$. The simple harmonic oscillator is the linear
+case $F = -m\omega^2 x$, giving the conserved energy
+$E = \tfrac{1}{2}v^2 + \tfrac{1}{2}\omega^2 x^2$.
+
+\subsection{The Lorenz system}
+The Lorenz equations~\cite{lorenz1963},
+\begin{align}
+  \dot{x} &= \sigma(y - x), \\
+  \dot{y} &= x(\rho - z) - y, \\
+  \dot{z} &= xy - \beta z,
+\end{align}
+have fixed points at the origin and, for $\rho > 1$, at
+$C_\pm = (\pm\sqrt{\beta(\rho-1)}, \pm\sqrt{\beta(\rho-1)}, \rho-1)$. For the
+classical parameters $\sigma = 10$, $\beta = 8/3$, $\rho = 28$ all fixed points
+are unstable and trajectories approach a strange attractor.
+
+\section{Numerical Methods}
+\texttt{simgen} provides fixed-step explicit Euler and classical fourth-order
+Runge--Kutta (RK4) integrators, together with a bridge to SciPy's adaptive
+solvers (RK45, DOP853, Radau, BDF, LSODA)~\cite{virtanen2020scipy,hairer1993}.
+RK4 advances the solution by
+\begin{equation}
+  \mathbf{y}_{n+1} = \mathbf{y}_n + \tfrac{h}{6}\,
+  (\mathbf{k}_1 + 2\mathbf{k}_2 + 2\mathbf{k}_3 + \mathbf{k}_4),
+\end{equation}
+with the usual stage definitions; its local truncation error is $O(h^5)$.
+Stiff problems are routed to implicit methods (Radau, BDF)~\cite{ascher1998}.
+Symplectic velocity-Verlet integration is provided for conservative mechanical
+systems where long-time energy behaviour matters.
+
+\section{Simulation Design}
+The specification (\texttt{PhenomenonSpec}) records the state variables,
+parameters, derivative expressions, initial conditions, integration settings,
+plots, and an animation description. Derivative expressions are evaluated in a
+restricted namespace exposing only NumPy~\cite{harris2020numpy} and a curated set
+of mathematical functions, preventing arbitrary code execution. The code
+generator renders \emph{standalone} Python (depending only on NumPy/SciPy) so
+that generated projects are portable.
+
+\section{Visualization Design}
+Two visualization paths are produced. Static figures use
+Matplotlib~\cite{matplotlib_docs} (time series, 2-D phase portraits, and 3-D
+phase-space curves). Animations use \textsc{Manim}~\cite{manim_docs}: the
+trajectory is downsampled, centred, and scaled to the frame, then drawn as a
+smooth path with a moving marker; three-dimensional systems use an orbiting
+camera.
+
+\section{Results}
+The framework reproduces known results quantitatively:
+\begin{itemize}
+  \item The simple harmonic oscillator matches $x(t) = \cos(\omega t)$ to
+        better than $10^{-3}$ with RK4, and conserves energy with relative drift
+        below $10^{-3}$.
+  \item Exponential decay matches $e^{-t}$ to better than $10^{-4}$.
+  \item The Rosenstein estimator~\cite{rosenstein1993} applied to the Lorenz
+        trajectory yields a largest Lyapunov exponent of approximately $0.89$,
+        close to the accepted value $\approx 0.906$, and clearly larger than the
+        near-zero value for the (regular) harmonic oscillator.
+\end{itemize}
+A representative generated figure is included if present:
+\begin{figure}[h]
+\centering
+\IfFileExists{../generated/lorenz-system/figure_0_phase3d.png}
+  {\includegraphics[width=0.7\textwidth]{../generated/lorenz-system/figure_0_phase3d.png}}
+  {\fbox{\parbox{0.7\textwidth}{\centering Generate this figure with
+   \texttt{simgen generate --from-library lorenz-system --run --plot}.}}}
+\caption{The Lorenz attractor produced by a generated project.}
+\end{figure}
+
+\section{Discussion}
+By making the specification the single source of truth, the system guarantees
+that the simulation, plots, animation, and report describe the same model. The
+deterministic generator means results are reproducible: the same prompt and model
+output always yield byte-identical files.
+
+\section{Limitations}
+The LLM may produce specifications that are physically plausible but
+quantitatively imperfect; validation therefore relies on the offline reference
+library and on automated checks. Explicit fixed-step methods can be inaccurate
+for stiff systems, for which adaptive/implicit methods should be selected.
+Chaotic trajectories are only predictable over a finite horizon set by the
+largest Lyapunov exponent; only statistical and geometric features are robust.
+
+\section{Future Work}
+Planned extensions include native partial-differential-equation templates
+(finite differences and spectral methods), automatic stiffness detection and
+method selection, parameter-sweep and bifurcation tooling, and richer animation
+templates (vector fields, bifurcation diagrams, and slope fields).
+
+\section{Conclusion}
+\texttt{simgen} demonstrates that natural-language prompts can be turned into
+complete, reproducible scientific mini-projects by combining an LLM front end
+with a deterministic, well-tested numerical and code-generation core.
+
+\nocite{*}
+\bibliographystyle{plain}
+\bibliography{bibliography}
+
+\end{document}

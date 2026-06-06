@@ -1,0 +1,72 @@
+"""Generate figures for: {{ spec.name }}.
+
+Standalone Matplotlib script. Run after (or alongside) ``simulation.py``:
+
+    python plot.py              # writes figure_*.png in this directory
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import matplotlib
+
+matplotlib.use("Agg")  # headless-safe backend
+import matplotlib.pyplot as plt  # noqa: E402
+from mpl_toolkits.mplot3d import Axes3D  # noqa: E402,F401  (registers 3d)
+
+from simulation import STATE_SYMBOLS, simulate  # noqa: E402
+
+PLOTS = {{ plots_repr }}
+
+
+def _column(t: np.ndarray, states: np.ndarray, symbol: str) -> np.ndarray:
+    """Return the trajectory for ``symbol`` (or time for ``"t"``)."""
+    if symbol == "t":
+        return t
+    return states[:, STATE_SYMBOLS.index(symbol)]
+
+
+def main() -> None:
+    """Render every configured plot to a PNG file."""
+    t, states = simulate()
+    for index, plot in enumerate(PLOTS):
+        kind = plot["kind"]
+        if kind == "phase3d":
+            fig = plt.figure(figsize=(7, 6))
+            ax = fig.add_subplot(111, projection="3d")
+            ax.plot(
+                _column(t, states, plot["x"]),
+                _column(t, states, plot["y"]),
+                _column(t, states, plot["z"]),
+                lw=0.5,
+                color="#2ca02c",
+            )
+            ax.set_xlabel(plot["x"])
+            ax.set_ylabel(plot["y"])
+            ax.set_zlabel(plot["z"])
+        elif kind == "phase2d":
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.plot(
+                _column(t, states, plot["x"]),
+                _column(t, states, plot["y"]),
+                lw=0.8,
+                color="#d62728",
+            )
+            ax.set_xlabel("time" if plot["x"] == "t" else plot["x"])
+            ax.set_ylabel("time" if plot["y"] == "t" else plot["y"])
+            ax.grid(True, alpha=0.3)
+        else:  # time_series
+            fig, ax = plt.subplots(figsize=(8, 4.5))
+            ax.plot(t, _column(t, states, plot["y"]), lw=1.2, color="#1f77b4")
+            ax.set_xlabel("time")
+            ax.set_ylabel(plot["y"])
+            ax.grid(True, alpha=0.3)
+        ax.set_title(plot["title"])
+        filename = f"figure_{index}_{kind}.png"
+        fig.savefig(filename, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved {filename}")
+
+
+if __name__ == "__main__":
+    main()
