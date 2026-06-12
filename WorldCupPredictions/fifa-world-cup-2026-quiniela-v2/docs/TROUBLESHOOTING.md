@@ -44,3 +44,20 @@
 | Uniform probabilities everywhere         | No models are loaded. Run `scripts/train_models.py`.             |
 | `KeyError: 'team_a'`                     | Missing column in input. Pass a DataFrame with `team_a`/`team_b`.|
 | `ModuleNotFoundError: src.*`             | Run from project root or install in editable mode: `pip install -e .`. |
+| `PermissionError: ... outputs\\*.csv`    | The output CSV is open in Excel/another app (Windows file lock). Close it and rerun the step. |
+
+## Squad values (A.2)
+
+| Symptom                                       | Fix                                                              |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| "Squad-value table not found" / features absent | Run `scripts/build_squad_values.py` (needs the Kaggle `player-scores` dump). The pipeline degrades cleanly without it. |
+| Unmapped team warnings in `build_squad_values`  | Add the citizenship/country alias to `SQUAD_VALUE_NAME_MAP` in `src/data/squad_value_client.py`. |
+| Result added but match still "upcoming"         | The result row's `(date, team_a, team_b)` must match the scheduled fixture exactly (order and spelling) so the dedup replaces it. |
+
+## Notebooks
+
+| Symptom                                       | Fix                                                              |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `KeyError: 'pi_combined'` / empty data        | The notebook ran from the wrong cwd. `import nb_style` chdirs to the project root — ensure it runs first. |
+| Charts missing squad value / scorelines       | Run `build_squad_values.py` / `predict_scorelines.py` (those cells degrade with a printed notice). |
+| Cell timeout during calibration               | The held-out fold trains a model; rerun with `jupyter nbconvert --execute --ExecutePreprocessor.timeout=600`. |

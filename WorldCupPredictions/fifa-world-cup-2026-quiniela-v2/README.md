@@ -8,14 +8,17 @@ Generate match-by-match outcome and scoreline forecasts for the 48-team tourname
 
 ## Highlights
 
-- Modular data layer (FIFA rankings, football-data.org, StatsBomb open data, manual CSV fallback).
-- Composite team-strength rating combining Elo, PI rating, and rolling form.
-- Multinomial logistic regression + XGBoost + Poisson scoreline + Dixon-Coles low-score adjustment.
-- Probability ensemble with isotonic and Platt calibration.
-- Tournament Monte-Carlo simulator with FIFA tiebreak rules and best-third selection.
+- Modular data layer (FIFA rankings, football-data.org, StatsBomb open data, manual CSV fallback, **Transfermarkt squad values via Kaggle**).
+- Composite team-strength rating combining Elo, PI rating, and rolling form, with time decay and Bayesian shrinkage toward confederation priors.
+- **Squad-value features (A.2)** — talent signal orthogonal to results, the most predictive covariate after Elo.
+- Multinomial logistic regression + XGBoost + Poisson scoreline (**Skellam for H/D/A**, Dixon-Coles grid for exact scorelines), with LASSO feature selection.
+- Config-driven probability ensemble with isotonic / Platt calibration, validated by an **out-of-sample reliability diagram**.
+- Tournament Monte-Carlo simulator with FIFA tiebreak rules and best-third selection — pairings scored with the **full blended model** so the title race reflects talent, not only results.
+- **Most-likely scorelines** per match (`scoreline_predictions.csv`).
+- **Leakage-free cross-tournament backtester** that is the arbiter for every modelling change.
 - Dedicated quiniela strategy layer separating "true probability" from "best pick".
-- Daily update workflow that refreshes ratings, features, and predictions after each matchday.
-- FastAPI service exposing all key operations.
+- Daily update workflow (`update_matchday.bat`) that refreshes ratings, features, and predictions after each matchday.
+- FastAPI service exposing all key operations; four polished analysis notebooks.
 
 ## Quick start
 
@@ -35,15 +38,18 @@ pip install -r requirements.txt
 # 4. Configure environment
 cp config/.env.example .env
 
-# 5. Bootstrap historical data and ratings
+# 5. Bootstrap historical data, squad values and ratings
 python scripts/bootstrap_historical_data.py
+python scripts/build_squad_values.py        # optional (needs Kaggle player-scores)
 python scripts/build_ratings.py
 
-# 6. Train models
+# 6. Build features and train models
+python scripts/run_pipeline.py
 python scripts/train_models.py
 
-# 7. Predict group-stage matches and export picks
+# 7. Predict matches, scorelines and export picks
 python scripts/predict_group_stage.py
+python scripts/predict_scorelines.py
 python scripts/export_quiniela_sheet.py
 
 # 8. Simulate the full tournament
@@ -53,6 +59,9 @@ python scripts/simulate_tournament.py
 python scripts/update_after_matchday.py
 ```
 
+On Windows, `run_all.bat` runs the whole pipeline end-to-end and
+`update_matchday.bat` does a one-shot matchday refresh.
+
 ## Data sources
 
 | Source                   | Purpose                                       | Mode                 |
@@ -60,13 +69,14 @@ python scripts/update_after_matchday.py
 | FIFA ranking snapshots   | Historical ranking points and positions       | Local snapshot       |
 | football-data.org        | Fixtures, results, standings                  | API + cached         |
 | StatsBomb Open Data      | Event-level historical data when available    | Open data only       |
-| Manual CSV               | Fallback / emergency override                 | Local CSV templates  |
+| Kaggle `player-scores`   | Transfermarkt squad market values (A.2)       | Local dataset        |
+| Manual CSV               | Fallback / emergency override / results entry | Local CSV templates  |
 
 Every external pull is persisted under `data/raw/` with a timestamp so results are always reproducible.
 
 ## Updating during the World Cup
 
-After matches finish on any given matchday:
+After matches finish on any given matchday (Windows one-shot: `update_matchday.bat`):
 
 ```bash
 python scripts/update_after_matchday.py --date 2026-06-15
@@ -74,13 +84,13 @@ python scripts/update_after_matchday.py --date 2026-06-15
 
 This will:
 
-1. Pull official fixtures/results for that date.
-2. Append them to the canonical match table.
+1. Pull official fixtures/results for that date (or read a manual results CSV).
+2. Append them to the canonical match table (dedup replaces the scheduled fixture).
 3. Update Elo / PI / form ratings.
 4. Refresh tournament-state features.
 5. Re-train (or warm-start) outcome and scoreline models.
-6. Regenerate probabilities for remaining matches.
-7. Export new `outputs/picks/quiniela_*.csv` sheets.
+6. Regenerate probabilities, most-likely scorelines, and remaining-match forecasts.
+7. Export new `outputs/picks/quiniela_*.csv` sheets and refresh the simulation.
 
 ## Risk profiles
 

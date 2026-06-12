@@ -2,10 +2,11 @@
 
 ## 1. Requirements
 
-- Python 3.10 or 3.11.
+- Python 3.10–3.12 (developed on 3.11/3.12).
 - Git.
 - 4+ GB of RAM (XGBoost training and Monte-Carlo simulations).
 - Optional: Docker 24+ and docker-compose v2 for the containerised deployment.
+- Optional (analysis notebooks): `seaborn`/`jupyter` are already in `requirements.txt`.
 
 ## 2. Clone
 
@@ -55,6 +56,20 @@ python scripts/bootstrap_historical_data.py
 ```
 
 This will create timestamped raw snapshots under `data/raw/`. If a source is unavailable a CSV template is produced for you to fill manually.
+
+### Optional Kaggle datasets
+
+- **Results history** — `martj42/international-football-results-from-1872-to-2017` →
+  `data/raw/kaggle/results.csv`, imported by `scripts/import_kaggle_history.py`.
+- **Squad values (A.2)** — `davidcariboo/player-scores` → `data/raw/kaggle/players-scores/`
+  (needs `players.csv` + `player_valuations.csv`). Then build the snapshots:
+
+  ```bash
+  python scripts/build_squad_values.py
+  ```
+
+  This is optional — without it the pipeline degrades cleanly without the
+  squad-value features.
 
 ## 7. Verify the install
 

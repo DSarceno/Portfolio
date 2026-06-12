@@ -66,6 +66,6 @@ WantedBy=multi-user.target
 
 - Run behind a reverse proxy (nginx / Caddy) with TLS.
 - Set `API_RELOAD=false` in production.
-- Pre-warm artifacts before exposing traffic: bootstrap data, train models, generate picks.
-- Schedule the daily update via cron or your favourite orchestrator.
+- Pre-warm artifacts before exposing traffic: bootstrap data, (optionally) `build_squad_values.py`, build ratings, run pipeline, train models, generate picks/scorelines and simulate. On Windows, `run_all.bat` does the whole pre-warm end-to-end.
+- Schedule the daily update via cron (`update_after_matchday.py`) or `update_matchday.bat` on Windows.
 - Monitor `logs/errors/` and the `/health` endpoint.

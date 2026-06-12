@@ -169,7 +169,9 @@ donde $r_0$ es el prior asignado por confederación y $K$ controla la fuerza del
 
 **Justificación contextual.** Selecciones con poca historia frente a rivales fuertes (e.g., naciones de OFC o pequeñas naciones de AFC) tienden a tener ratings empíricos infladamente alterados por una *strength of schedule* débil. El shrinkage hacia el promedio confederacional mitiga esta distorsión.
 
-**Implementación.** [`src/ratings/shrinkage.py`](src/ratings/shrinkage.py), clase `RatingShrinker`. Priors de Elo: UEFA/CONMEBOL=1620, CONCACAF=1430, AFC=1400, CAF=1420, OFC=1200. **Limitación conocida**: el prior actual es Gaussiano simple por confederación, no una mixtura como sugieren Baio & Blangiardo (2010); ver §10.
+**Implementación.** [`src/ratings/shrinkage.py`](src/ratings/shrinkage.py), clase `RatingShrinker` (defaults $K_{\text{elo}}=K_{\text{pi}}=30$, $K_{\text{poisson}}=35$). Priors de Elo: UEFA/CONMEBOL=1620, CONCACAF=1430, AFC=1400, CAF=1420, OFC=1200.
+
+**Mixture prior (A.4) — implementado pero desactivado.** La mixtura élite/regular por confederación que sugieren Baio & Blangiardo (2010) está implementada (`classify_elite` con compuerta `min_matches_for_elite` para que un equipo de pocos partidos nunca sea élite). Sin embargo, el backtest cross-tournament (§7.12) mostró que con los priors élite/regular calibrados a mano **empeora** el log-loss held-out (+2.3%), por lo que `ratings.shrinkage.mixture_prior.enabled = false` por defecto. Es la ilustración del principio metodológico del proyecto: la realismo visual de la lista de campeones no decide; el backtest sí.
 
 ### 2.9. Simulación Monte-Carlo
 
@@ -181,7 +183,17 @@ $$\hat{P}(X = \text{campeón}) = \frac{1}{N} \sum_{r=1}^N \mathbb{1}[\text{X gan
 
 con $N = 2000$ por defecto. La precisión del estimador escala como $O(N^{-1/2})$.
 
-**Implementación.** [`src/simulation/tournament_simulator.py`](src/simulation/tournament_simulator.py), clase `TournamentSimulator`. Incluye dos optimizaciones críticas: (i) cache de predicciones para todos los pares ordenados de equipos antes del bucle principal, y (ii) motor vectorizado `VectorizedGroupStageEngine` que ejecuta la fase de grupos con operaciones sobre arrays NumPy.
+**Implementación.** [`src/simulation/tournament_simulator.py`](src/simulation/tournament_simulator.py), clase `TournamentSimulator`. Incluye dos optimizaciones críticas: (i) cache de predicciones para todos los pares ordenados de equipos antes del bucle principal, y (ii) motor vectorizado `VectorizedGroupStageEngine` que ejecuta la fase de grupos con operaciones sobre arrays NumPy. Cada par se pre-scorea con el **modelo blended completo** (no solo ratings+Poisson): `feature_builder.build_pairwise_feature_matrix` arma fixtures sintéticos neutros para los $n(n-1)$ pares y los pasa por el mismo pipeline de features (squad value as-of + diffs de fuerza + contexto neutro), de modo que la distribución de campeón refleja talento (§7.9).
+
+### 2.10. Valor de plantilla como proxy de talento (A.2)
+
+**Definición.** El Elo y el PI son ratings *basados en resultados*: premian lo que ya ocurrió y reaccionan tarde. La literatura de pronóstico de selecciones (Groll, Schauberger & Tutz 2015; Groll & Ley 2019) muestra que el **valor de mercado de la plantilla** es la covariable más predictiva después del Elo, porque captura el **talento actual** — exactamente lo que un rating de resultados no ve cuando una potencia rota plantilla o atraviesa mala forma.
+
+**Forma aplicada.** Por selección se agrega el valor de mercado de los jugadores (proxy por `country_of_citizenship`, dataset Kaggle `player-scores` derivado de Transfermarkt) a la fecha del partido (as-of), y se usan dos transformaciones: el total y la suma del **top-11** (el XI más valioso, más robusto al ruido del proxy). Las features de partido son diferencias log: $\Delta = \log(1+v_a) - \log(1+v_b)$.
+
+**Consistencia de escala.** El mismo método de agregación se usa para todos los snapshots (2018/2022/2026), de modo que la feature está en la misma escala en entrenamiento y predicción — condición necesaria para que el modelo transfiera.
+
+**Validación.** Aceptado por el backtest cross-tournament (log-loss held-out 0.9994 → 0.9905; §7.12). Implementación: [`src/data/squad_value_client.py`](src/data/squad_value_client.py), [`src/features/squad_value_features.py`](src/features/squad_value_features.py).
 
 ---
 
@@ -707,6 +719,8 @@ return lambda a, b: cache[(str(a), str(b))]
 
 Reduce el costo de simulación de $O(N \cdot \text{matches\_per\_run} \cdot \text{cost}(predict\_fn))$ a $O(n^2 \cdot \text{cost}(predict\_fn) + N \cdot \text{matches\_per\_run})$.
 
+En `simulate_tournament.py`, el `predict_fn` se construye sobre una matriz de features **por par** (`build_pairwise_feature_matrix`) scoreada una vez con el modelo completo, en lugar de `predict_single(a,b)` que caía a ratings+Poisson por ausencia de feature columns. Así el campeón refleja squad value y el resto de features engineered.
+
 ### 7.10. Métricas implementadas
 
 [`src/utils/metrics.py`](src/utils/metrics.py):
@@ -716,7 +730,27 @@ Reduce el costo de simulación de $O(N \cdot \text{matches\_per\_run} \cdot \tex
 - **Accuracy top-1**: $\text{argmax}(\hat{p}_i) = y_i$.
 - **Macro-F1**: promedio del F1 por clase.
 - **Expected Calibration Error (ECE)**: $\sum_b \frac{|B_b|}{n}|\text{acc}(B_b) - \text{conf}(B_b)|$ con 10 bins por defecto.
+- **Ranked Probability Score (RPS) ordinal**: sobre la escala ordenada $[H, D, A]$, penaliza más un error de dos categorías que de una (Constantinou & Fenton 2012). En [`src/training/backtester.py`](src/training/backtester.py).
 - **Quiniela score (custom)**: 1 pt por 1X2 correcto, +2 pts por marcador exacto, +1 pt por acertar sorpresa.
+
+### 7.11. As-of join del valor de plantilla
+
+Para cada partido $(d, a, b)$, se toma por equipo el snapshot de valor de plantilla con `as_of_date` máxima $\le d$ (un `pd.merge_asof` con `by="team"`, dirección `backward`). Faltantes → mediana de la confederación a esa época; luego `log1p` y diferencia home−away. Date-aware → sin leakage en el backtest. [`src/features/squad_value_features.py`](src/features/squad_value_features.py).
+
+### 7.12. Backtest cross-tournament leakage-free (el árbitro)
+
+```
+para cada año Y objetivo:
+    train  ← partidos con año < Y
+    test   ← partidos del torneo (== Y, competition)
+    ratings ← RatingEnsemble(shrinker).fit(train)          // solo historia previa
+    feats   ← build_match_feature_matrix(train ∪ test, ..., squad_values)  // as-of
+    modelos ← Trainer.fit(train_feats)                     // LASSO + XGB/MN/Poisson
+    proba   ← blend(ratings, modelos)(test_feats)
+    métricas(Y) ← log_loss, brier, RPS, accuracy, ECE
+```
+
+Como ratings y features de test se derivan **solo** de datos pre-Y (as-of), no hay fuga de información. `run_tournament_backtest` agrega por año; `collect_holdout_predictions` devuelve `(proba, y_true)` de un torneo para la curva de calibración. [`src/training/backtester.py`](src/training/backtester.py), [`scripts/backtest_tournaments.py`](scripts/backtest_tournaments.py). **Es el criterio de aceptación** de todo cambio de modelado: A.2 (squad value) se aceptó y A.4 (mixture prior) se rechazó aquí.
 
 ---
 
@@ -796,9 +830,9 @@ Las siguientes referencias **no aparecen en el código** pero sustentan teórica
 2. **Heterogeneidad de cobertura.** StatsBomb Open Data está disponible solo para un subconjunto histórico. Sin instrumentación de tracking, los proxies de fatiga y viaje son aproximaciones funcionales pero ruidosas.
 3. **Penaltis modelados como Bernoulli proxy.** La conversión real de penaltis varía entre selecciones (cf. tasas históricas publicadas por FIFA). El proxy actual asume que la diferencia de fuerza determina probabilísticamente la ganadora del tiroteo.
 4. **Calibración potencialmente con leak parcial.** El calibrador isotónico se ajusta sobre `val_features`. *Por confirmar*: si el flujo actual garantiza que `val_features` es estrictamente posterior al conjunto de entrenamiento de XGBoost (split temporal con `validation_year=2025`), no hay leak. Una aserción explícita en `Trainer.fit` cerraría la garantía.
-5. **Shrinkage Gaussiano simple por confederación.** No diferencia entre élites y resto dentro de una confederación. Una mixtura de priors (cf. Baio & Blangiardo, 2010) preservaría mejor la separación entre potencias UEFA/CONMEBOL y selecciones medianas de la misma confederación.
+5. **Mixture prior implementado pero desactivado.** La mixtura élite/regular por confederación (Baio & Blangiardo, 2010) está implementada, pero el backtest cross-tournament mostró que los priors calibrados a mano empeoran el log-loss held-out; queda `enabled: false` a la espera de un re-tuneo validado (§2.8).
 6. **Sin consenso de casas de apuestas.** La literatura (Leitner-Zeileis-Hornik 2010; Zeileis 2018) reporta de forma unánime que el consenso agregado de ≥10 casas, des-overround, define el benchmark a superar. El sistema no consume odds y por tanto no puede medirse contra ese benchmark.
-7. **Sin valor de plantilla.** El factor más predictivo identificado por Groll et al. (2014–2026) tras el Elo es el valor de mercado de plantilla (Transfermarkt). El sistema actual no lo consume.
+7. **Valor de plantilla por proxy de nacionalidad.** El sistema **sí** consume valor de plantilla (§2.10), pero la agregación es por `country_of_citizenship`, no por convocatoria real: incluye ciudadanos no convocados y omite nacionalizados. El `top-11` mitiga el ruido; reconstruir convocatorias históricas reales (vía `game_lineups`) queda pendiente.
 8. **Sin features StatsBomb.** El cliente existe pero no produce features. Recurso desperdiciado, aunque con ROI marginal en selecciones por baja muestra.
 9. **Sin autenticación en la API.** Aceptable para uso individual; insuficiente para despliegue público.
 
@@ -816,11 +850,11 @@ Las siguientes referencias **no aparecen en el código** pero sustentan teórica
 | ID | Mejora | Impacto esperado | Esfuerzo | Referencia |
 |---|---|---|---|---|
 | O.1 | Integrar consenso de odds de casas como prior/feature | Alto (benchmark establecido) | Medio | Leitner-Zeileis-Hornik (2010); Zeileis (2018) |
-| O.2 | Agregar valor de plantilla (Transfermarkt vía Kaggle `davidcariboo/player-scores`) | Alto | Medio | Groll, Schauberger & Tutz (2015) |
-| O.3 | Mixture prior en shrinkage (élite vs resto por confederación) | Medio | Bajo | Baio & Blangiardo (2010) |
+| ~~O.2~~ ✅ | **Hecho** — valor de plantilla (Kaggle `player-scores`), aceptado por backtest (§2.10) | Alto | Medio | Groll, Schauberger & Tutz (2015) |
+| ~~O.3~~ ⏸️ | **Implementado pero desactivado** — mixture prior; empeoró el backtest (§2.8) | Medio | Bajo | Baio & Blangiardo (2010) |
 | O.4 | PageRank como rating ortogonal al Elo | Medio | Medio | Hubáček et al. (2019) |
 | O.5 | Aserción explícita de no-leak entre train y val del calibrador | Bajo | Trivial | — |
-| O.6 | Backtest cross-tournament (train ≤2018, test 2022) | Alto valor diagnóstico | Bajo (módulo `backtester.py` ya existe) | Groll et al. (2015, 2019) |
+| ~~O.6~~ ✅ | **Hecho** — backtest cross-tournament leakage-free (`run_tournament_backtest`, §7.12) | Alto valor diagnóstico | Bajo | Groll et al. (2015, 2019) |
 | O.7 | Modelo bivariate Poisson con covarianza explícita | Medio | Medio | Karlis & Ntzoufras (2003) |
 | O.8 | Tiebreakers FIFA completos (fair-play, head-to-head) | Bajo | Medio | Reglamento FIFA 2026 |
 | O.9 | Home advantage para anfitriones (USA/MEX/CAN) | Bajo–medio | Bajo | Práctica de la industria |
@@ -830,7 +864,7 @@ Las siguientes referencias **no aparecen en el código** pero sustentan teórica
 
 - **Orquestación**: migrar del `.bat`/`Makefile` a Prefect o Airflow para visibilidad de runs.
 - **Almacenamiento**: para volúmenes mayores, considerar un *backend* en SQLite o DuckDB para la tabla canónica de partidos.
-- **Pruebas**: aumentar cobertura. Los módulos `src/training/{backtester,cross_validation,evaluator}` tienen 0% de cobertura; `src/utils/{metrics,plotting,dates}` también.
+- **Pruebas**: aumentar cobertura. `src/training/backtester.py` y `src/ensemble/blender.py` ya tienen tests (RPS, `collect_holdout_predictions`, blend weights); `src/training/{cross_validation,evaluator}` y `src/utils/{metrics,plotting,dates}` siguen sin cobertura.
 - **CI/CD**: integrar GitHub Actions con `pytest`, `pylint` y un *smoke test* del pipeline completo en cada PR.
 - **Versionado de modelos**: hoy los pkls se sobrescriben. Un esquema `models/<timestamp>/*.pkl` con un *symlink* a `latest` permitiría rollback.
 
@@ -846,7 +880,9 @@ La capa de simulación Monte-Carlo permite estimar probabilidades de eventos com
 
 La separación explícita entre **estimación probabilística** (capa de modelos + calibrador + blender) y **selección de pronósticos** (capa de `pick_optimizer` con cuatro perfiles de riesgo) refleja una comprensión madura del dominio aplicado: la probabilidad subyacente es la misma, lo que cambia es la función de utilidad del jugador. Esta separación facilita además experimentar con perfiles adicionales sin tocar la capa de modelado.
 
-Las limitaciones identificadas en §10 son conocidas y, en su mayoría, corresponden a *trade-offs* explícitos del proyecto: priorización de un sistema entendible y mantenible sobre uno que persiga el último 1% de log-loss a costa de complejidad infraestructural (scrapers de odds, integraciones con Transfermarkt). El sistema deja claramente identificadas, en el anexo A del [`CLAUDE.md`](CLAUDE.md), las mejoras pendientes con su impacto y esfuerzo estimado, lo que constituye una práctica deseable de ingeniería de software académica.
+Desde el upgrade de modelado de junio 2026, el sistema incorpora además el **valor de plantilla** (Groll et al.) como señal de talento ortogonal a los resultados — aceptado tras validarlo en un **backtest cross-tournament leakage-free** que se erige como el árbitro de todo cambio de modelado — y un **simulador que scorea cada emparejamiento con el modelo completo**, de modo que la distribución de campeón refleja talento y no solo historia de resultados.
+
+Las limitaciones identificadas en §10 son conocidas y, en su mayoría, corresponden a *trade-offs* explícitos del proyecto: priorización de un sistema entendible y mantenible sobre uno que persiga el último 1% de log-loss a costa de complejidad infraestructural adicional (scrapers de odds en vivo, reconstrucción de convocatorias históricas). El sistema deja claramente identificadas, en el anexo A del [`CLAUDE.md`](CLAUDE.md), las mejoras pendientes con su impacto y esfuerzo estimado, lo que constituye una práctica deseable de ingeniería de software académica.
 
 En conjunto, el proyecto demuestra que un sistema de pronóstico deportivo de calidad académica no requiere arquitecturas ML exóticas, sino la composición disciplinada de técnicas estadísticas bien fundamentadas, una ingeniería de software sólida y la conciencia explícita de las limitaciones del dominio aplicado.
 

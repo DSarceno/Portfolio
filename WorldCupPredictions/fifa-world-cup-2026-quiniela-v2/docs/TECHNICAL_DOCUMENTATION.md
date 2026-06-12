@@ -37,14 +37,14 @@ See [diagrams/system_architecture.md](diagrams/system_architecture.md) for a Mer
 
 | Module          | Responsibility                                                            |
 | --------------- | ------------------------------------------------------------------------- |
-| `src/data/`     | Ingestion, validation, canonical table, tournament-state aggregations.    |
-| `src/ratings/`  | Elo, PI, rolling form, and composite z-score ensemble.                    |
-| `src/features/` | Feature engineering across team, match, fatigue, market, tournament.     |
-| `src/models/`   | Outcome classifiers, Poisson scoreline, calibration.                      |
-| `src/ensemble/` | Probability blending and risk-profile pick optimization.                  |
+| `src/data/`     | Ingestion, validation, canonical table, tournament-state, **squad market values** (`squad_value_client`). |
+| `src/ratings/`  | Elo, PI, rolling form, composite z-score ensemble, **shrinkage + mixture prior**. |
+| `src/features/` | Feature engineering across team, match, fatigue, market, tournament, **squad value**. |
+| `src/models/`   | Outcome classifiers, Poisson scoreline (Skellam H/D/A + Dixon-Coles grid), calibration. |
+| `src/ensemble/` | Probability blending (config-driven weights) and risk-profile pick optimization. |
 | `src/simulation/`| Group stage, bracket generation, knockout, tournament Monte-Carlo.       |
-| `src/prediction/`| Match-level predictor, score recommendations, quiniela strategy, daily update. |
-| `src/training/` | Trainer, Evaluator, Backtester, rolling-origin splits.                    |
+| `src/prediction/`| Match predictor, score recommendations, quiniela strategy, daily update, **pairwise feature builder**. |
+| `src/training/` | Trainer, Evaluator, **cross-tournament backtester** + rolling-origin splits, `collect_holdout_predictions`. |
 | `src/api/`      | FastAPI endpoints exposing prediction, simulation, strategy, updates.    |
 | `src/utils/`    | Logging, config, IO, dates, metrics, plotting, constants.                |
 
@@ -53,13 +53,15 @@ See [diagrams/system_architecture.md](diagrams/system_architecture.md) for a Mer
 1. **Ingest** — `ResultsCollector` invokes `FootballDataClient`, `StatsBombClient`, and `FifaRankingsClient`. Raw snapshots are persisted under `data/raw/`.
 2. **Unify** — Raw rows are normalized into a canonical match table at `data/interim/matches_unified.csv`.
 3. **Validate** — `validate_match_dataframe` checks schema, missing columns, negative scores, duplicates.
-4. **Rate** — `RatingEnsemble().fit(matches)` produces composite team strengths.
-5. **Engineer** — `build_match_feature_matrix` joins team and match features, plus tournament/fatigue/market features.
-6. **Split** — `temporal_split` produces train/validation/test sets without leakage.
-7. **Train** — `Trainer().fit(...)` fits multinomial, XGBoost, and Poisson models. Calibrator is fitted on validation probabilities.
-8. **Predict** — `MatchPredictor.predict_proba()` blends and (optionally) calibrates probabilities.
-9. **Strategize** — `QuinielaStrategy.generate_all(...)` outputs per-profile pick sheets.
-10. **Simulate** — `TournamentSimulator.run(n_runs)` aggregates Monte-Carlo statistics.
+4. **Squad values (A.2)** — `scripts/build_squad_values.py` aggregates Kaggle `player-scores` into dated snapshots at `data/raw/squad_values/squad_values.csv` (idempotent; only re-run when the dump or manual override changes).
+5. **Rate** — `RatingEnsemble().fit(matches)` produces composite team strengths (with shrinkage).
+6. **Engineer** — `build_match_feature_matrix` joins team/match/tournament/fatigue/market features plus the date-aware squad-value diffs (as-of join).
+7. **Split** — `temporal_split` produces train/validation/test sets without leakage.
+8. **Train** — `Trainer().fit(...)` runs LASSO selection then fits multinomial, XGBoost, and Poisson; calibrator fitted on validation probabilities.
+9. **Predict** — `MatchPredictor.predict_proba()` blends (config weights) and optionally calibrates; `predict_scorelines.py` adds the top-3 scorelines per match.
+10. **Strategize** — `QuinielaStrategy.generate_all(...)` outputs per-profile pick sheets.
+11. **Simulate** — `TournamentSimulator.run(n_runs)` aggregates Monte-Carlo statistics; pairings are pre-scored with the full blended model via `build_pairwise_feature_matrix`.
+12. **Validate the model** — `run_tournament_backtest` (cross-tournament, leakage-free) is the arbiter for any modelling change.
 
 ## 4. Error handling
 

@@ -1,21 +1,22 @@
 # Repository Completeness Report
 
-Generated on the final build of the FIFA World Cup 2026 Quiniela Predictor V2.
+Reflects the June 2026 state (squad value A.2, scoreline output, full-model
+simulator, cross-tournament backtester, mixture prior A.4 (off), portfolio notebooks).
 
 ## Summary
 
 | Category                  | Count |
 | ------------------------- | ----- |
-| Python modules under `src/` | 51  |
-| CLI scripts under `scripts/` | 9  |
-| Unit test files            | 5    |
-| Notebooks                  | 4    |
+| Python files under `src/` | 63 (52 excl. `__init__`) |
+| CLI scripts under `scripts/` | 13 |
+| Unit test files            | 8    |
+| Notebooks (+ `nb_style.py`) | 4 + 1 |
 | Config files               | 5    |
 | LaTeX report files         | 14   |
 | Documentation files (docs/) | 14  |
 | Docker files               | 2    |
-| Manual CSV templates       | 3    |
-| **Total tracked files**    | **124** |
+| Windows batch files        | 2 (`run_all.bat`, `update_matchday.bat`) |
+| Manual / template CSVs     | 4 manual + squad-value template |
 
 All Python sources parse cleanly under AST and `py_compile`.
 
@@ -28,9 +29,12 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `README.md`
 - [x] `ARCHITECTURE.md`
 - [x] `Makefile`
+- [x] `run_all.bat`
+- [x] `update_matchday.bat`
 - [x] `requirements.txt`
 - [x] `setup.py`
 - [x] `pyproject.toml`
+- [x] `MARCO_TEORICO.md`
 
 ### Configuration (`config/`)
 
@@ -63,6 +67,8 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `data_validator.py`
 - [x] `data_splitter.py`
 - [x] `tournament_updater.py`
+- [x] `kaggle_results_client.py`
+- [x] `squad_value_client.py`
 
 ### `src/ratings/`
 
@@ -71,6 +77,7 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `pi_rating.py`
 - [x] `form_rating.py`
 - [x] `rating_ensemble.py`
+- [x] `shrinkage.py`
 
 ### `src/features/`
 
@@ -81,6 +88,7 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `tournament_features.py`
 - [x] `market_features.py`
 - [x] `fatigue_features.py`
+- [x] `squad_value_features.py`
 
 ### `src/models/`
 
@@ -113,13 +121,14 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `score_predictor.py`
 - [x] `quiniela_strategy.py`
 - [x] `daily_update.py`
+- [x] `feature_builder.py` (incl. `build_pairwise_feature_matrix`)
 
 ### `src/training/`
 
 - [x] `__init__.py`
 - [x] `trainer.py`
 - [x] `evaluator.py`
-- [x] `backtester.py`
+- [x] `backtester.py` (cross-tournament + `collect_holdout_predictions`)
 - [x] `cross_validation.py`
 
 ### `src/api/`
@@ -130,12 +139,16 @@ All Python sources parse cleanly under AST and `py_compile`.
 ### `scripts/`
 
 - [x] `bootstrap_historical_data.py`
+- [x] `import_kaggle_history.py`
 - [x] `build_ratings.py`
+- [x] `build_squad_values.py`
 - [x] `run_pipeline.py`
 - [x] `train_models.py`
 - [x] `predict_group_stage.py`
+- [x] `predict_scorelines.py`
 - [x] `predict_knockout.py`
 - [x] `simulate_tournament.py`
+- [x] `backtest_tournaments.py`
 - [x] `update_after_matchday.py`
 - [x] `export_quiniela_sheet.py`
 
@@ -149,9 +162,13 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `unit/test_models.py`
 - [x] `unit/test_simulation.py`
 - [x] `unit/test_strategy.py`
+- [x] `unit/test_ensemble.py`
+- [x] `unit/test_backtester.py`
+- [x] `unit/test_squad_value.py`
 
 ### `notebooks/`
 
+- [x] `nb_style.py` (shared theme + helpers)
 - [x] `01_exploration.ipynb`
 - [x] `02_ratings_diagnostics.ipynb`
 - [x] `03_model_comparison.ipynb`
@@ -201,6 +218,9 @@ All Python sources parse cleanly under AST and `py_compile`.
 - [x] `fifa_rankings/fifa_ranking_template.csv`
 - [x] `manual/manual_matches_WC.csv`
 - [x] `manual/manual_fixtures_WC2026.csv`
+- [x] `manual/wc2026_results.csv` (matchday results entry)
+- [x] `squad_values/squad_values_2026_manual.csv` (A.2 manual override template)
+- [x] `squad_values/README.md`
 
 ## Missing files
 
@@ -253,7 +273,7 @@ Note: an interpreter-level smoke test requires `pip install -r requirements.txt`
 - [x] Every directory exists.
 - [x] Every file listed in the specification exists.
 - [x] No placeholder code or `# TODO` markers remain.
-- [x] Tests are present (5 unit-test files, shared fixtures).
+- [x] Tests are present (8 unit-test files, shared fixtures).
 - [x] API is present.
 - [x] Training pipeline is present.
 - [x] Tournament-update workflow is present.

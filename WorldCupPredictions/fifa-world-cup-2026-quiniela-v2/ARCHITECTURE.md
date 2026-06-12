@@ -5,16 +5,20 @@
 No single family of models captures every aspect of international football:
 
 - **Ratings (Elo, PI, form)** are good at long-horizon ordering of teams but slow to adapt to one-off surprises. They give a stable backbone.
-- **Multinomial / XGBoost classifiers** consume the full feature vector (rest, host advantage, tournament state, fatigue proxies, strategy features) and capture interactions that ratings cannot.
-- **Poisson / Dixon-Coles scoreline models** are necessary because quinielas reward exact scorelines and because outcome probabilities derived from goal-rate models behave better in low-scoring or tightly matched fixtures.
+- **Multinomial / XGBoost classifiers** consume the full feature vector (rest, host advantage, tournament state, fatigue proxies, strategy features, **squad value**) and capture interactions that ratings cannot.
+- **Poisson scoreline models** derive H/D/A via **Skellam** (the goal-difference distribution, better-calibrated for draws) and keep the Dixon-Coles grid for the exact scorelines quinielas reward.
 
-Blending them produces probabilities that are simultaneously stable (ratings), expressive (ML), and scoreline-consistent (Poisson).
+Blending them (with config-driven weights) produces probabilities that are simultaneously stable (ratings), expressive (ML), and scoreline-consistent (Poisson).
+
+## Why squad value: talent vs results
+
+Elo and PI are *results-based* — they reward what already happened. They systematically under-rate talent-rich teams in a poor run (e.g. Brazil) and over-rate over-performers (e.g. Morocco). **Squad market value** (Transfermarkt, via the Kaggle `player-scores` dataset, aggregated by citizenship as-of date) is an orthogonal *talent* signal. Added as `squad_value_*_diff` features, it improved held-out log-loss (0.9994 → 0.9905) and pulls the simulated title race toward the genuine favorites. Crucially, the same aggregation method is used for every snapshot (2018/2022/2026) so the feature is on a consistent scale across training and prediction.
 
 ## Why calibration matters
 
 Quiniela scoring is non-linear in probability. A pick worth 0.55 implied probability and a pick worth 0.70 implied probability can result in very different pool outcomes. Raw model outputs from XGBoost are notoriously overconfident; without isotonic or sigmoid calibration the strategy layer would pick "fake favorites" and routinely overweight low-entropy matches.
 
-Calibration is applied per-model **before** blending and validated through reliability diagrams produced by the diagnostics module.
+Calibration is applied per-model **before** blending and validated through a **leakage-free, out-of-sample reliability diagram**: `collect_holdout_predictions` trains the full stack on matches before a held-out tournament and compares predicted confidence against observed accuracy (ECE) on that tournament (see `notebooks/03_model_comparison.ipynb`).
 
 ## Why tournament updates matter
 
@@ -52,7 +56,7 @@ Knockout football is path-dependent:
 - Final-matchday group fixtures have asymmetric incentives that distort effort.
 - Rest-day differentials compound through the bracket.
 
-The Monte-Carlo simulator (`src/simulation/tournament_simulator.py`) runs the entire tournament 10,000+ times to produce:
+The Monte-Carlo simulator (`src/simulation/tournament_simulator.py`) runs the entire tournament thousands of times to produce:
 
 - Group qualification probabilities.
 - Round-reached probabilities per team.
@@ -60,7 +64,11 @@ The Monte-Carlo simulator (`src/simulation/tournament_simulator.py`) runs the en
 - Most likely knockout paths.
 - Match-up frequency matrices.
 
-The strategy layer uses these to make bracket-aware picks (for example, avoiding overconfident picks for the team most likely to be on the brutal half of the bracket).
+Every ordered team pair is pre-scored once with the **full blended model** (`feature_builder.build_pairwise_feature_matrix` builds synthetic neutral fixtures carrying squad value + strength diffs, run through the same feature pipeline), so the simulated title race reflects talent — not just the ratings + Poisson fallback the simulator used to be limited to. The strategy layer uses these to make bracket-aware picks.
+
+## Why the cross-tournament backtest is the arbiter
+
+Champion probabilities are seductive but misleading: a results-over-performer can top the list "correctly". The only honest test of a modelling change is **held-out predictive accuracy**. `run_tournament_backtest` (`scripts/backtest_tournaments.py`) trains the full stack on `< year` and scores the held-out tournament (`== year`) leakage-free, reporting log-loss / Brier / RPS / ECE. Every change — blend weights, K factors, the mixture prior (A.4, rejected), squad value (A.2, accepted) — is judged here, not by how the bracket looks.
 
 ## Module dependency graph
 

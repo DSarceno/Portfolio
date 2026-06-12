@@ -1,5 +1,22 @@
 # Operations Runbook
 
+## One-shot matchday refresh (Windows)
+
+`update_matchday.bat` ingests recent results and regenerates ratings → features →
+models → predictions → scorelines → picks → simulation in a single command (it
+does **not** rebuild the static squad-value snapshots):
+
+```bat
+update_matchday.bat                       REM default: data\raw\manual\wc2026_results.csv
+update_matchday.bat path\to\results.csv   REM a specific results CSV
+update_matchday.bat 2026-06-15            REM pull results for a date from football-data.org
+```
+
+Add one row per played match to `data/raw/manual/wc2026_results.csv` (canonical
+schema: `date,competition,stage,group,team_a,team_b,score_a,score_b,neutral_venue`),
+matching the scheduled fixture exactly so the result replaces it. Close any open
+`outputs/*.csv` first (Excel locks them → `PermissionError`).
+
 ## Daily World Cup update
 
 Recommended cron:
@@ -20,11 +37,15 @@ The updater:
 
 1. `python scripts/update_after_matchday.py --date <today>` — fetch and append.
 2. `python scripts/build_ratings.py` — refresh composite ratings.
-3. `python scripts/run_pipeline.py` — rebuild features.
+3. `python scripts/run_pipeline.py` — rebuild features (loads `squad_values.csv` if present).
 4. `python scripts/train_models.py` — refit models (or warm-start).
 5. `python scripts/predict_group_stage.py` / `python scripts/predict_knockout.py`.
-6. `python scripts/export_quiniela_sheet.py` — refresh quiniela CSVs.
-7. `python scripts/simulate_tournament.py` — refresh Monte-Carlo aggregates.
+6. `python scripts/predict_scorelines.py` — most-likely scorelines per match.
+7. `python scripts/export_quiniela_sheet.py` — refresh quiniela CSVs.
+8. `python scripts/simulate_tournament.py` — refresh Monte-Carlo aggregates.
+
+> `build_squad_values.py` is **not** part of the daily loop — squad values are
+> static during the tournament; rerun only when the Kaggle dump changes.
 
 ## Monitoring
 
@@ -46,7 +67,7 @@ python -c "from src.data.data_validator import validate_match_dataframe; \
 
 Persist these directories nightly:
 
-- `data/raw/` (immutable raw snapshots).
+- `data/raw/` (immutable raw snapshots, incl. `squad_values/` and `manual/wc2026_results.csv`).
 - `data/interim/matches_unified.csv` (canonical truth).
 - `models/` (pickled artifacts).
 - `outputs/` (predictions, picks, diagnostics).
@@ -57,6 +78,7 @@ Replay from `data/raw/`:
 
 ```bash
 python scripts/bootstrap_historical_data.py
+python scripts/build_squad_values.py    # if the Kaggle player-scores dump is present
 python scripts/run_pipeline.py
 python scripts/train_models.py
 ```

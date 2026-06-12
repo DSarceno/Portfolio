@@ -8,6 +8,12 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 Interactive OpenAPI documentation is available at `http://localhost:8000/docs`.
 
+> **Blending & degradation:** `/predict/*` blends the models using the weights in
+> `config/model_params.yaml::ensemble.weights` (loaded via `BlendWeights.from_config`).
+> If the ML artifacts (`xgboost_model.pkl`, etc.) are missing, the service degrades
+> gracefully to ratings + Poisson instead of failing. `recommended_scoreline` comes
+> from the Poisson model.
+
 ## GET `/health`
 
 Service health.
