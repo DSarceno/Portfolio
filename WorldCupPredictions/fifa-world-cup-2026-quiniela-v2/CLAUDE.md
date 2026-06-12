@@ -65,7 +65,7 @@ fifa-world-cup-2026-quiniela-v2/
 ├── reports/                 # academic/ (9 secciones + main.tex), dashboard/ (3 secciones + main.tex).
 ├── docs/                    # 11 .md de documentación + diagramas Mermaid.
 ├── docker/                  # Dockerfile + docker-compose.yml.
-├── notebooks/               # 4 notebooks de exploración/diagnóstico.
+├── notebooks/               # 4 notebooks de análisis (portafolio); estilo compartido en nb_style.py.
 ├── run_all.bat              # Pipeline completo end-to-end para Windows.
 ├── Makefile                 # Targets equivalentes para Unix-likes.
 ├── pyproject.toml           # black/isort/pylint/pytest config.

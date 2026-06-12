@@ -134,6 +134,70 @@ def _ranked_probability_score(y_true: Sequence[str], proba: np.ndarray) -> float
     return total / n if n else float("nan")
 
 
+def _score_holdout(
+    df: pd.DataFrame,
+    year: int,
+    competition: str,
+    weights: BlendWeights,
+    shrinker_factory: Optional[Callable[[], RatingShrinker]],
+    hyperparameters: Optional[dict],
+    lasso_select: bool,
+    lasso_C: float,
+    squad_values: Optional[pd.DataFrame],
+    min_train_matches: int,
+    played: pd.Series,
+) -> Optional[tuple[pd.DataFrame, np.ndarray, int]]:
+    """Train the full stack on ``< year`` and score the ``== year`` tournament.
+
+    Returns ``(test_feats, proba, n_train)`` or ``None`` when the fold is skipped
+    (insufficient history or no test matches). Leakage-safe: ratings and
+    features for the test fixtures are derived only from pre-year data.
+    """
+    train_matches = df[df["year"] < year]
+    comp_upper = df["competition"].astype(str).str.upper()
+    test_matches = df[(df["year"] == year) & (comp_upper == competition.upper()) & played]
+    if len(train_matches) < min_train_matches or test_matches.empty:
+        return None
+
+    shrinker = shrinker_factory() if shrinker_factory is not None else None
+    ensemble = RatingEnsemble(shrinker=shrinker).fit(train_matches)
+    composite = ensemble.composite_table()
+
+    combined = pd.concat([train_matches, test_matches], ignore_index=True)
+    feats = build_match_feature_matrix(
+        combined, pd.DataFrame(), composite, squad_values=squad_values
+    )
+    feats["date"] = pd.to_datetime(feats["date"], errors="coerce")
+    feats["year"] = feats["date"].dt.year
+    feats_comp = feats["competition"].astype(str).str.upper()
+    train_feats = feats[(feats["year"] < year) & feats["outcome"].notna()].copy()
+    test_feats = feats[
+        (feats["year"] == year) & (feats_comp == competition.upper()) & feats["outcome"].notna()
+    ].copy()
+    if train_feats.empty or test_feats.empty:
+        return None
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        trainer = Trainer(
+            models_dir=tmp_dir,
+            hyperparameters=hyperparameters,
+            shrinker=shrinker_factory() if shrinker_factory is not None else None,
+            lasso_select=lasso_select,
+            lasso_C=lasso_C,
+        )
+        outputs = trainer.fit(train_feats, val_features=None)
+
+    predictor = MatchPredictor(
+        outcome_models={"multinomial": outputs.multinomial, "xgboost": outputs.xgboost},
+        poisson_model=outputs.poisson,
+        elo=ensemble.elo,
+        calibrator=None,
+        blender=ProbabilityBlender(weights=weights),
+    )
+    proba = predictor.predict_proba(test_feats)
+    return test_feats, proba, len(train_feats)
+
+
 def run_tournament_backtest(
     matches: pd.DataFrame,
     target_years: Sequence[int],
@@ -192,7 +256,6 @@ def run_tournament_backtest(
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"])
     df["year"] = df["date"].dt.year
-    comp_upper = df["competition"].astype(str).str.upper()
     # The canonical table stores scorelines, not a derived outcome; a match is
     # "played" when both scores are present.
     played = df["score_a"].notna() & df["score_b"].notna()
@@ -200,69 +263,29 @@ def run_tournament_backtest(
     evaluator = Evaluator()
     records: list[dict[str, float]] = []
     for year in sorted(target_years):
-        train_matches = df[df["year"] < year]
-        test_matches = df[(df["year"] == year) & (comp_upper == competition.upper()) & played]
-        if len(train_matches) < min_train_matches:
-            logger.warning(
-                "Skipping %d: only %d training matches (< %d)",
-                year,
-                len(train_matches),
-                min_train_matches,
-            )
-            continue
-        if test_matches.empty:
-            logger.warning("Skipping %d: no played %s matches to evaluate", year, competition)
-            continue
-
-        # Ratings fit on pre-year data only -> the composite table carries no
-        # information from the held-out tournament.
-        shrinker = shrinker_factory() if shrinker_factory is not None else None
-        ensemble = RatingEnsemble(shrinker=shrinker).fit(train_matches)
-        composite = ensemble.composite_table()
-
-        combined = pd.concat([train_matches, test_matches], ignore_index=True)
-        feats = build_match_feature_matrix(
-            combined, pd.DataFrame(), composite, squad_values=squad_values
+        scored = _score_holdout(
+            df,
+            year,
+            competition,
+            weights,
+            shrinker_factory,
+            hyperparameters,
+            lasso_select,
+            lasso_C,
+            squad_values,
+            min_train_matches,
+            played,
         )
-        feats["date"] = pd.to_datetime(feats["date"], errors="coerce")
-        feats["year"] = feats["date"].dt.year
-        feats_comp = feats["competition"].astype(str).str.upper()
-
-        train_feats = feats[(feats["year"] < year) & feats["outcome"].notna()].copy()
-        test_feats = feats[
-            (feats["year"] == year) & (feats_comp == competition.upper()) & feats["outcome"].notna()
-        ].copy()
-        if train_feats.empty or test_feats.empty:
-            logger.warning("Skipping %d: empty feature split after build", year)
+        if scored is None:
+            logger.warning("Skipping %d: insufficient history or no test matches", year)
             continue
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trainer = Trainer(
-                models_dir=tmp_dir,
-                hyperparameters=hyperparameters,
-                shrinker=shrinker_factory() if shrinker_factory is not None else None,
-                lasso_select=lasso_select,
-                lasso_C=lasso_C,
-            )
-            outputs = trainer.fit(train_feats, val_features=None)
-
-        predictor = MatchPredictor(
-            outcome_models={
-                "multinomial": outputs.multinomial,
-                "xgboost": outputs.xgboost,
-            },
-            poisson_model=outputs.poisson,
-            elo=ensemble.elo,
-            calibrator=None,
-            blender=ProbabilityBlender(weights=weights),
-        )
-        proba = predictor.predict_proba(test_feats)
+        test_feats, proba, n_train = scored
         y_true = test_feats["outcome"].astype(str).tolist()
         report = evaluator.evaluate(y_true=y_true, proba=proba)
         record = {
             "year": int(year),
             "n_test": int(len(test_feats)),
-            "n_train": int(len(train_feats)),
+            "n_train": int(n_train),
             "rps": _ranked_probability_score(y_true, proba),
             **{k: v for k, v in report.to_dict().items() if not k.startswith("quiniela_")},
         }
@@ -285,3 +308,55 @@ def run_tournament_backtest(
         aggregate = numeric.mean()
     logger.info("Tournament backtest aggregate: %s", aggregate.to_dict())
     return BacktestResult(per_fold=per_fold, aggregate=aggregate)
+
+
+def collect_holdout_predictions(
+    matches: pd.DataFrame,
+    year: int,
+    competition: str = "WC",
+    shrinker_factory: Optional[Callable[[], RatingShrinker]] = None,
+    blend_weights: Optional[BlendWeights] = None,
+    hyperparameters: Optional[dict] = None,
+    lasso_select: bool = True,
+    lasso_C: float = 0.1,
+    squad_values: Optional[pd.DataFrame] = None,
+    min_train_matches: int = 500,
+) -> tuple[np.ndarray, list[str]]:
+    """Out-of-sample ``(proba, y_true)`` for one held-out tournament.
+
+    Trains the full stack on every match before *year* and predicts that
+    tournament's played matches. Used by the calibration and backtest notebooks.
+
+    Returns:
+        ``(proba, y_true)`` with ``proba`` shape ``(n, 3)`` summing to 1 row-wise
+        and ``y_true`` a list of ``"H"/"D"/"A"``. Empty arrays if the fold is
+        skipped (no history or no test matches).
+
+    Raises:
+        ValueError: If *matches* is empty.
+    """
+    if matches.empty:
+        raise ValueError("No matches supplied to collect_holdout_predictions")
+    weights = blend_weights or BlendWeights()
+    df = matches.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    df["year"] = df["date"].dt.year
+    played = df["score_a"].notna() & df["score_b"].notna()
+    scored = _score_holdout(
+        df,
+        year,
+        competition,
+        weights,
+        shrinker_factory,
+        hyperparameters,
+        lasso_select,
+        lasso_C,
+        squad_values,
+        min_train_matches,
+        played,
+    )
+    if scored is None:
+        return np.empty((0, 3)), []
+    test_feats, proba, _ = scored
+    return proba, test_feats["outcome"].astype(str).tolist()
