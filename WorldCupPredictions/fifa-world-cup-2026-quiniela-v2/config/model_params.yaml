@@ -43,7 +43,7 @@ ensemble:
   enabled: true
   method: "weighted_blend"
   weights:
-    ratings: 0.25
+    ratings: 0.35
     multinomial: 0.20
     xgboost: 0.30
-    poisson: 0.25
+    poisson: 0.15

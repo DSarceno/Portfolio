@@ -48,6 +48,12 @@ feature_groups:
       - cards_accumulated
       - suspension_risk_proxy
 
+  squad_value:
+    enabled: true            # A.2; requiere data/raw/squad_values/squad_values.csv
+    features:
+      - squad_value_total_diff   # log(total_a) - log(total_b), valor de plantilla
+      - squad_value_top11_diff   # log(top11_a) - log(top11_b), XI más valioso
+
   aggressive_strategy:
     enabled: true
     features:

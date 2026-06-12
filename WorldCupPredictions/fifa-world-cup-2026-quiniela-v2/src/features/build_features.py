@@ -10,6 +10,10 @@ import pandas as pd
 from src.features.fatigue_features import compute_fatigue_features
 from src.features.market_features import compute_market_features
 from src.features.match_features import compute_match_features
+from src.features.squad_value_features import (
+    SQUAD_VALUE_FEATURE_COLUMNS,
+    compute_squad_value_features,
+)
 from src.features.team_features import compute_team_features
 from src.features.tournament_features import (
     add_tournament_state_to_matches,
@@ -45,7 +49,7 @@ NUMERIC_FEATURE_COLUMNS = [
     "public_bias_proxy",
     "wc_points_diff",
     "wc_goal_diff_diff",
-]
+] + SQUAD_VALUE_FEATURE_COLUMNS
 
 
 def build_match_feature_matrix(
@@ -55,6 +59,7 @@ def build_match_feature_matrix(
     tournament_state: Optional[pd.DataFrame] = None,
     team_continent: Optional[dict[str, str]] = None,
     confederation_map: Optional[dict[str, str]] = None,
+    squad_values: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """Build the full feature matrix used by training and inference.
 
@@ -65,6 +70,8 @@ def build_match_feature_matrix(
         tournament_state: Optional per-team state aggregates.
         team_continent: Optional ``team -> continent`` mapping for travel proxies.
         confederation_map: Optional ``team -> confederation`` mapping.
+        squad_values: Optional squad-value snapshots (A.2). When provided, adds
+            date-aware ``squad_value_*_diff`` features via an as-of join.
 
     Returns:
         DataFrame with engineered features and the ``outcome`` label.
@@ -80,6 +87,7 @@ def build_match_feature_matrix(
     if match_features.empty:
         return match_features
 
+    match_features = compute_squad_value_features(match_features, squad_values)
     match_features = compute_market_features(match_features)
     match_features = compute_fatigue_features(match_features, team_continent=team_continent)
 
@@ -129,8 +137,7 @@ def _fillna_numeric(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df.copy()
     numeric_cols = [
-        c for c in out.select_dtypes(include="number").columns
-        if c not in _METADATA_NUMERIC_COLUMNS
+        c for c in out.select_dtypes(include="number").columns if c not in _METADATA_NUMERIC_COLUMNS
     ]
     out[numeric_cols] = out[numeric_cols].fillna(0.0)
     return out

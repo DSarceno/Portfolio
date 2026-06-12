@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import pandas as pd
 
+from src.ensemble.blender import BlendWeights, ProbabilityBlender
 from src.ensemble.pick_optimizer import PickOptimizer
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
@@ -72,6 +73,7 @@ def main() -> int:
         outcome_models={"multinomial": mn, "xgboost": xgb},
         poisson_model=poisson,
         calibrator=calibrator,
+        blender=ProbabilityBlender(weights=BlendWeights.from_config(config)),
     )
     probabilities = predictor.predict_matches(fixtures)
 

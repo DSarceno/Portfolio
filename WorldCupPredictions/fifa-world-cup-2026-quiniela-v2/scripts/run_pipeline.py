@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.data_loader import DataLoader
 from src.data.data_validator import validate_match_dataframe
 from src.data.fifa_rankings_client import FifaRankingsClient
+from src.data.squad_value_client import SquadValueClient
 from src.data.tournament_updater import TournamentUpdater
 from src.features.build_features import build_match_feature_matrix
 from src.ratings.rating_ensemble import RatingEnsemble
@@ -75,7 +76,9 @@ def main() -> int:
     if args.start_year is not None:
         import pandas as pd
 
-        matches = matches[pd.to_datetime(matches["date"], errors="coerce").dt.year >= args.start_year]
+        matches = matches[
+            pd.to_datetime(matches["date"], errors="coerce").dt.year >= args.start_year
+        ]
         logger.info("Filtered to matches from %d onwards: %d rows", args.start_year, len(matches))
 
     report = validate_match_dataframe(matches)
@@ -86,14 +89,26 @@ def main() -> int:
     composite = ensemble.composite_table()
 
     rankings = FifaRankingsClient().latest()
-    state = TournamentUpdater().world_cup_state(
-        tournament_year=config.get("tournament.year", 2026)
-    )
+    state = TournamentUpdater().world_cup_state(tournament_year=config.get("tournament.year", 2026))
+
+    squad_values = None
+    if bool(config.get("data.sources.squad_value.enabled", True)):
+        sv_client = SquadValueClient()
+        if sv_client.is_available():
+            squad_values = sv_client.load()
+        else:
+            logger.warning(
+                "Squad-value source enabled but %s missing; run "
+                "scripts/build_squad_values.py. Continuing without it.",
+                sv_client.path,
+            )
+
     feature_matrix = build_match_feature_matrix(
         matches=matches,
         rankings=rankings,
         composite_table=composite,
         tournament_state=state,
+        squad_values=squad_values,
     )
 
     if feature_matrix.empty:

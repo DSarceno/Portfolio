@@ -47,6 +47,12 @@ SOURCES: dict[str, SourceSpec] = {
         fallback_to_manual=False,
         description="Kaggle 'International football results 1872-2024' dataset.",
     ),
+    "squad_value": SourceSpec(
+        name="squad_value",
+        requires_api_key=False,
+        fallback_to_manual=True,
+        description="Squad market values (A.2) derived from Kaggle player-scores.",
+    ),
 }
 
 

@@ -13,10 +13,14 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 import pandas as pd
 
+from src.ensemble.blender import BlendWeights, ProbabilityBlender
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
 from src.models.poisson_model import PoissonScoreModel
-from src.prediction.feature_builder import build_inference_feature_matrix
+from src.prediction.feature_builder import (
+    build_inference_feature_matrix,
+    build_pairwise_feature_matrix,
+)
 from src.prediction.predictor import MatchPredictor
 from src.simulation.tournament_simulator import TournamentSimulator
 from src.utils.config import load_config
@@ -161,6 +165,10 @@ def main() -> int:
     except FileNotFoundError:
         xgb = None
     try:
+        mn = BaseOutcomeModel.load(models_dir / "multinomial_model.pkl")
+    except FileNotFoundError:
+        mn = None
+    try:
         poisson = load_pickle(models_dir / "poisson_model.pkl")
         if not isinstance(poisson, PoissonScoreModel):
             poisson = None
@@ -180,14 +188,43 @@ def main() -> int:
     except FileNotFoundError:
         logger.warning("rating_ensemble.pkl not found; simulator will run on Poisson only")
 
+    blend_weights = BlendWeights.from_config(config)
+    logger.info(
+        "Blend weights: ratings=%.2f multinomial=%.2f xgboost=%.2f poisson=%.2f",
+        blend_weights.ratings,
+        blend_weights.multinomial,
+        blend_weights.xgboost,
+        blend_weights.poisson,
+    )
     predictor = MatchPredictor(
-        outcome_models={"xgboost": xgb},
+        outcome_models={"multinomial": mn, "xgboost": xgb},
         poisson_model=poisson,
         elo=elo,
         calibrator=calibrator,
+        blender=ProbabilityBlender(weights=blend_weights),
     )
 
+    # Score every possible knockout pairing with the FULL feature-based model
+    # (squad value + engineered features), not just ratings + Poisson. We build a
+    # feature row per ordered pair once and look it up in the hot loop.
+    teams = sorted({str(t) for t in pd.concat([fixtures["team_a"], fixtures["team_b"]]).dropna()})
+    pair_proba: dict[tuple[str, str], np.ndarray] = {}
+    pair_features = build_pairwise_feature_matrix(teams, tournament_year=tournament_year)
+    if not pair_features.empty:
+        proba = predictor.predict_proba(pair_features)
+        for (a, b), row in zip(
+            zip(pair_features["team_a"].astype(str), pair_features["team_b"].astype(str)),
+            proba,
+        ):
+            pair_proba[(a, b)] = np.asarray(row, dtype=float)
+        logger.info("Pre-scored %d ordered pairs with the full model", len(pair_proba))
+    else:
+        logger.warning("Pairwise feature matrix empty; falling back to ratings + Poisson")
+
     def _predict_pair(a: str, b: str) -> np.ndarray:
+        cached = pair_proba.get((str(a), str(b)))
+        if cached is not None:
+            return cached
         pred = predictor.predict_single(a, b)
         return np.array([pred.p_home, pred.p_draw, pred.p_away])
 

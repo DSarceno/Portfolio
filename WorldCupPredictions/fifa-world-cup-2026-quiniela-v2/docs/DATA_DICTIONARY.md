@@ -27,6 +27,20 @@
 | `points`         | float  | Ranking points             |
 | `confederation`  | str    | UEFA, CONMEBOL, ...        |
 
+## Squad-value snapshots (`data/raw/squad_values/squad_values.csv`)
+
+Dated national-squad market values (A.2). Built by `scripts/build_squad_values.py`
+from the Kaggle `players-scores` dataset (citizenship proxy, same method per
+date). Features as-of join the latest snapshot with `as_of_date <= match date`.
+
+| Column                   | Type  | Description                                   |
+| ------------------------ | ----- | --------------------------------------------- |
+| `team`                   | str   | Canonical team name                           |
+| `as_of_date`             | date  | Snapshot validity date                        |
+| `squad_value_total_meur` | float | Total squad market value (millions EUR)       |
+| `squad_value_top11_meur` | float | Sum of the 11 most valuable players (M EUR)   |
+| `source`                 | str   | `kaggle_citizenship` or `manual` (override)   |
+
 ## Engineered feature matrix (`data/processed/feature_matrix.csv`)
 
 ### Team-strength features
@@ -97,9 +111,27 @@
 | `defense_diff`    | float | Defense vs. opponent attack          |
 | `wc_points_diff`  | float | Tournament points differential       |
 | `wc_goal_diff_diff`| float | Tournament goal-diff differential   |
+| `squad_value_total_diff` | float | `log1p(total_a) - log1p(total_b)`, squad market value (A.2) |
+| `squad_value_top11_diff` | float | `log1p(top11_a) - log1p(top11_b)`, value of the 11 most valuable players (A.2) |
 
 ### Labels
 
 | Column    | Values         | Description           |
 | --------- | -------------- | --------------------- |
 | `outcome` | `H`, `D`, `A`  | Match result label    |
+
+## Scoreline predictions (`outputs/predictions/scoreline_predictions.csv`)
+
+One row per upcoming match. The H/D/A probabilities come from the full blended
+model; the scorelines come from the Poisson (Dixon-Coles) grid, so the modal
+scoreline can differ from the favoured outcome (e.g. `pred_outcome=H` with
+`top1_score=1-1`) — expected behaviour, not a bug.
+
+| Column           | Type  | Description                                            |
+| ---------------- | ----- | ------------------------------------------------------ |
+| `date`, `stage`  | str   | Match date and stage                                   |
+| `team_a`, `team_b` | str | Teams                                                  |
+| `pred_outcome`   | str   | Most likely outcome (`H`/`D`/`A`) from the blend       |
+| `p_home/p_draw/p_away` | float | Blended H/D/A probabilities                       |
+| `top{1,2,3}_score` | str | k-th most likely scoreline as `a-b` (team_a-team_b)    |
+| `top{1,2,3}_prob`  | float | Probability of that scoreline                        |

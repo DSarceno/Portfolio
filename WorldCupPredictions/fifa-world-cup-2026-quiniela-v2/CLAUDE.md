@@ -112,6 +112,7 @@ python scripts/build_ratings.py
 python scripts/run_pipeline.py            # idempotente: NO recolecta, solo features
 python scripts/train_models.py
 python scripts/predict_group_stage.py
+python scripts/predict_scorelines.py
 python scripts/export_quiniela_sheet.py
 python scripts/simulate_tournament.py --n-runs 2000
 ```
@@ -146,6 +147,7 @@ python scripts/build_ratings.py
 python scripts/run_pipeline.py
 python scripts/train_models.py
 python scripts/predict_group_stage.py
+python scripts/predict_scorelines.py
 python scripts/export_quiniela_sheet.py
 python scripts/simulate_tournament.py --n-runs 2000
 ```
@@ -397,6 +399,43 @@ python -c "import pandas as pd; df = pd.read_csv('outputs/simulations/round_reac
 
 ---
 
+## 10.bis Segundo lote de modelado (junio 2026)
+
+Iteración para "mejorar la predicción" tuneando config. Hallazgo central: **no se puede
+tunear a ojo; hay que medir con el backtest**. Se construyó el árbitro (A.8) y se usó para
+aceptar/rechazar cada cambio.
+
+### Bug corregido: `ensemble.weights` era config muerta
+
+`model_params.yaml::ensemble.weights` **no se leía en ningún lado**. `MatchPredictor` se
+construía sin `blender`, cayendo siempre en los defaults hardcodeados de
+`BlendWeights` (0.25/0.20/0.30/0.25), tanto en `predict_group_stage.py`, `simulate_tournament.py`
+como en la API. Cambiar el YAML no tenía efecto.
+
+- **Fix:** `BlendWeights.from_model_params()` / `.from_config()` en `src/ensemble/blender.py`
+  (recuerda: `Config.get()` solo lee `config.yaml`/`self.main`; los pesos viven en
+  `model_params` → hay que acceder vía `config.model_params`). Cableado en los **4 call sites**:
+  `predict_group_stage.py`, `simulate_tournament.py`, `api/main.py` y `export_quiniela_sheet.py`
+  (este último se cableó en junio 2026 al integrar A.2; antes seguía con pesos default).
+  Test: `tests/unit/test_ensemble.py`.
+
+### Cambios de config evaluados con el backtest (2018+2022)
+
+| Cambio | Veredicto | Estado |
+|---|---|---|
+| `ensemble.weights` ratings 0.25→0.35, poisson 0.25→0.15 | **neutro** en log-loss (mejora la lista de campeones, inocuo en métrica) | aplicado |
+| `ratings.shrinkage.k_poisson` 20→35 | neutro en log-loss | aplicado |
+| **A.4 mixture prior** (élite/regular) | **net-negativo** (log-loss +2.3%, acc −2.4pts) | implementado pero **`enabled: false`** |
+| **A.8 backtester cross-tournament** | el árbitro que reveló lo anterior | implementado |
+
+**Moraleja para futuras sesiones:** la lista de `championship_probabilities.csv` es engañosa
+(una potencia que sobre-rinde como Morocco sale #1 por mérito de resultados; Brazil sale bajo
+por su mal tramo reciente). Eso **no es un bug** sino el límite de un rating basado solo en
+resultados. La palanca real de mejora ya no es tunear knobs (el backtest los muestra ~óptimos)
+sino **añadir señal ortogonal de talento → A.2 (valor de plantilla / Transfermarkt)**.
+
+---
+
 ## Anexo A — Roadmap de mejoras pendientes
 
 Cambios identificados en el análisis de literatura que **NO se aplicaron todavía**, en orden de impacto esperado / esfuerzo. Útil para próximas iteraciones.
@@ -414,18 +453,20 @@ La conclusión más unánime de la literatura (Leitner-Zeileis-Hornik 2010, Grol
 
 **Cita:** Zeileis 2018 (https://www.zeileis.org/news/fifa2018/), Groll 2026 R-bloggers.
 
-### A.2 Valor de plantilla (Transfermarkt) — **🔥🔥🔥 impacto / 🟡 esfuerzo medio**
+### A.2 Valor de plantilla — **✅ IMPLEMENTADO (junio 2026)**
 
-La covariable más predictiva DESPUÉS del Elo en las selecciones LASSO de Groll et al. (2014/2018/2022/2026). Captura calidad **actual** del talento — exactamente lo que el Elo, basado en resultados, NO captura cuando una potencia rota plantilla en amistosos.
+> **Veredicto del backtest: MEJORA. Activado por default.** A/B sobre 2018+2022:
+> log-loss 0.9994 → **0.9905**, Brier 0.1976 → 0.1955, RPS 0.2117 → 0.2082 (accuracy
+> igual). Ambas features sobreviven al LASSO (importancia ~0.05/0.04). Spec:
+> `docs/superpowers/specs/2026-06-11-a2-squad-value-design.md`.
 
-**Cómo entrarle:**
-1. `src/data/transfermarkt_client.py` — scraper de URLs tipo `transfermarkt.com/<team>/startseite/verein/<id>`.
-2. Por selección, extraer: `squad_value_total`, `squad_value_top11`, `squad_value_median`, `n_legionnaires_top5_leagues`, `n_ucl_players`, `mean_age`.
-3. Snapshot inmutable en `data/raw/transfermarkt/<timestamp>.csv` (mismo patrón que las otras fuentes).
-4. `compute_team_features` consume y emite columnas `*_diff` entre equipos.
-5. `NUMERIC_FEATURE_COLUMNS` += nuevos.
+Covariable #2 tras el Elo (Groll et al.). Captura **talento actual**, que el Elo (resultados) no ve. Implementación:
 
-**Nota:** Kaggle tiene un dataset `davidcariboo/player-scores` que también trae plantillas + valores (mismo repo del Kaggle ya integrado). Más fácil que scrapear.
+- **Fuente:** Kaggle `davidcariboo/player-scores` en `data/raw/kaggle/players-scores/`. **Proxy por nacionalidad** (`country_of_citizenship` + `player_valuations` as-of fecha), **mismo método para los 3 snapshots** (2018/2022/2026) → escala consistente train↔predicción (clave para que el modelo transfiera). NO se usa `national_teams.csv` (rompería esa consistencia).
+- **`scripts/build_squad_values.py`** → `data/raw/squad_values/squad_values.csv` (snapshots `team, as_of_date, *_total_meur, *_top11_meur, source`). Idempotente; re-correr solo si cambia el dump Kaggle o el override manual. Override opcional: `squad_values_2026_manual.csv`.
+- **`src/data/squad_value_client.py`** (`SquadValueClient`, `build_citizenship_snapshot`, `SQUAD_VALUE_NAME_MAP`). Registrado en `sources.py`.
+- **`src/features/squad_value_features.py`** — paso a **nivel de partido** (no team-static, porque depende de la fecha): as-of join por fecha del match → `squad_value_total_diff`, `squad_value_top11_diff` (`log1p` home − away); faltantes → mediana de confederación. Enganchado en `build_match_feature_matrix(squad_values=...)`, `run_pipeline.py`, `feature_builder.py`, `backtester.py`. Config: `data.sources.squad_value`.
+- **Simulador con modelo completo:** antes el Monte-Carlo corría solo con ratings+Poisson (`predict_single(a,b)` saltaba XGB/multinomial por features ausentes). Ahora `feature_builder.build_pairwise_feature_matrix(teams)` construye fixtures sintéticos neutrales para los `n*(n-1)` pares, los pasa por **el mismo** `build_match_feature_matrix` (squad value as-of + diffs de fuerza + contexto neutro) y los pre-scorea con el **modelo completo blended**; `simulate_tournament.py` hace lookup en el hot loop. Efecto: el campeón ahora refleja talento (Brazil #15→#5, Morocco #2→#10, Spain #1 a 12%). Si tocas el simulador, mantén este pre-scoring — sin él vuelve al modelo degradado.
 
 **Cita:** Groll-Schauberger-Tutz 2015, Groll-Ley 2019.
 
@@ -441,14 +482,18 @@ El modelo de producción Groll 2026 lo usa; Hubáček 2019 (ganador del Soccer P
 
 **Cita:** Hubáček-Šourek-Železný 2019 (Springer ML 108).
 
-### A.4 Mixture prior en shrinkage — **🔥 impacto / 🟢 esfuerzo bajo**
+### A.4 Mixture prior en shrinkage — **✅ IMPLEMENTADO pero DESACTIVADO (junio 2026)**
 
-El shrinkage Gaussiano actual jala todos los equipos hacia la media de su confederación. Baio-Blangiardo 2010 demostraron que un **mixture prior** (élite vs resto) preserva mejor la separación.
+> **Veredicto del backtest: NET-NEGATIVO. `mixture_prior.enabled: false` por default.**
+> Implementado en `src/ratings/shrinkage.py::RatingShrinker` (sub-priors `elite`/`regular`
+> por confederación + `classify_elite` con compuerta `min_matches_for_elite` anti-minnow).
+> El A/B con `run_tournament_backtest` (2018+2022) mostró que con los priors élite/regular
+> elegidos a mano (1740/1560…) **empeora** log-loss +2.3% y accuracy −2.4pts. Hizo que la
+> lista de campeones se *viera* mejor (Spain #1) pero degradó la predicción por partido —
+> que es la métrica relevante para quinielas. **No reactivar sin re-tunear los priors con un
+> optimizador y re-correr el backtest.** Config: `ratings.shrinkage.mixture_prior.*`.
 
-**Cómo entrarle:**
-1. En `src/ratings/shrinkage.py::RatingShrinker`, agregar dos sub-priors por confederación: `elite` (~top 30%) y `regular`.
-2. La asignación team→sub-prior se hace por nivel histórico (Elo top 30% de la confederación dentro de la elite).
-3. Cada team se jala hacia su prior correspondiente.
+El shrinkage Gaussiano jala todos los equipos hacia la media de su confederación. Baio-Blangiardo 2010 proponen un **mixture prior** (élite vs resto). La mecánica quedó cableada y testeada (`tests/unit/test_ratings.py`), solo desactivada. Para re-tunear: ajustar los dicts `CONFEDERATION_*_PRIOR_ELITE/REGULAR` y validar contra el backtest antes de prender el flag.
 
 **Cita:** Baio-Blangiardo 2010 (https://discovery.ucl.ac.uk/16040/).
 
@@ -478,15 +523,25 @@ Reporta `log_loss(modelo)` vs `log_loss(bookmaker_consensus)` sobre el set de va
 2. `src/training/evaluator.py::compare_against_bookmaker(model_proba, bookie_proba, y)`.
 3. Salida en `outputs/diagnostics/benchmark_vs_bookmaker.csv` con log-loss por torneo y delta.
 
-### A.8 Backtest cross-tournament — **🔥 valor diagnóstico / 🟢 esfuerzo bajo**
+### A.8 Backtest cross-tournament — **✅ IMPLEMENTADO (junio 2026)**
 
-Estándar de Groll: train WC2002-2014, test WC2018; train +2018, test 2022. Mide generalización. El `src/training/backtester.py` ya existe (cobertura 0%) — solo hay que cablearlo.
+`src/training/backtester.py::run_tournament_backtest` + `scripts/backtest_tournaments.py`.
+Entrena el **stack completo** (RatingEnsemble + shrinkage + multinomial + XGBoost + Poisson,
+blended con los pesos de config) sobre `año < Y` y evalúa en el torneo `== Y`, **sin leakage**:
+los ratings y las features de test se derivan solo de datos pre-Y (el composite se ajusta con
+`train` y se pasa a `build_match_feature_matrix`). Métricas: log-loss, Brier, **RPS ordinal**,
+accuracy, macro-F1, ECE.
 
-**Cómo entrarle:**
-1. Implementar `backtester.run_tournament_backtest(tournament_year)` que entrena sobre `< year` y predice `== year`.
-2. Recolecta log-loss, Brier, RPS.
-3. Salida en `outputs/diagnostics/backtest_<year>.csv`.
-4. Llamado opcional desde `run_all.bat` (paso 8.5).
+```powershell
+python scripts/backtest_tournaments.py --years 2018 2022
+# -> outputs/diagnostics/backtest_WC_2018_2022.csv
+```
+
+**Este es el árbitro.** Cualquier cambio de modelado (pesos, K, mixture, features nuevas) se
+valida aquí ANTES de creerle a la lista de campeones. Baseline actual (config de producción):
+log-loss ~0.999, accuracy ~0.55 sobre 2018+2022 (uniforme = 1.0986). Para A/B rápido, llamar
+`run_tournament_backtest(matches, [2018,2022], shrinker_factory=..., blend_weights=...)`
+directo con distintas configs (ver cómo se hizo el A/B de A.4).
 
 ### Prioridad sugerida si se retoma
 

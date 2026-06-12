@@ -43,8 +43,15 @@ def main() -> int:
             k_elo=float(config.get("ratings.shrinkage.k_elo", 30.0)),
             k_pi=float(config.get("ratings.shrinkage.k_pi", 30.0)),
             k_poisson=float(config.get("ratings.shrinkage.k_poisson", 20.0)),
+            mixture_prior=bool(config.get("ratings.shrinkage.mixture_prior.enabled", True)),
+            elite_fraction=float(config.get("ratings.shrinkage.mixture_prior.elite_fraction", 0.30)),
+            min_matches_for_elite=int(config.get("ratings.shrinkage.mixture_prior.min_matches", 20)),
         )
-        logger.info("Poisson shrinkage enabled (K=%s)", shrinker.k_poisson)
+        logger.info(
+            "Poisson shrinkage enabled (K=%s, mixture=%s)",
+            shrinker.k_poisson,
+            shrinker.mixture_prior,
+        )
 
     lasso_enabled = bool(config.get("training.lasso.enabled", True))
     lasso_C = float(config.get("training.lasso.C", 0.1))

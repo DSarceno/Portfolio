@@ -25,12 +25,23 @@ pip install -r requirements.txt
 cp config/.env.example .env
 python scripts/bootstrap_historical_data.py
 python scripts/build_ratings.py
+python scripts/build_squad_values.py   # A.2 squad value (optional; needs Kaggle player-scores)
 python scripts/run_pipeline.py
 python scripts/train_models.py
 python scripts/predict_group_stage.py
+python scripts/predict_scorelines.py   # most likely scorelines per match
 python scripts/export_quiniela_sheet.py
 python scripts/simulate_tournament.py
 ```
+
+> **Squad value (A.2):** `build_squad_values.py` reads the Kaggle
+> `davidcariboo/player-scores` dataset (place it under
+> `data/raw/kaggle/players-scores/`) and writes
+> `data/raw/squad_values/squad_values.csv`. It is **optional** — if the dataset
+> is absent the pipeline degrades cleanly without the squad-value features. It is
+> idempotent: rerun only when the Kaggle dump or the optional manual override
+> (`data/raw/squad_values/squad_values_2026_manual.csv`) changes, **not** every
+> matchday.
 
 ## 3. Installation
 
@@ -60,14 +71,26 @@ make api            # Launch FastAPI on http://localhost:8000
 
 ## 6. Updating after matchdays
 
-```bash
-python scripts/update_after_matchday.py --date 2026-06-15
+**One-shot (Windows):** `update_matchday.bat` ingests recent results and
+regenerates ratings → features → models → predictions → scorelines → picks →
+simulation in one go (it does *not* rebuild the static squad-value snapshots):
+
+```bat
+update_matchday.bat                       REM default: data\raw\manual\wc2026_results.csv
+update_matchday.bat path\to\results.csv   REM a specific results CSV
+update_matchday.bat 2026-06-15            REM pull results for a date from football-data.org
 ```
 
-Or use a manual CSV under `data/raw/manual/`:
+Add one row per played match to `data/raw/manual/wc2026_results.csv` (canonical
+schema: `date,competition,stage,group,team_a,team_b,score_a,score_b,neutral_venue`);
+`team_a`/`team_b`/`date` must match the scheduled fixture so the result replaces
+it instead of duplicating. Close any open `outputs/*.csv` (Excel locks them).
+
+**Manual equivalents:**
 
 ```bash
-python scripts/update_after_matchday.py --manual-csv data/raw/manual/matchday_5.csv
+python scripts/update_after_matchday.py --date 2026-06-15
+python scripts/update_after_matchday.py --manual-csv data/raw/manual/wc2026_results.csv
 ```
 
 ## 7. Output reference
@@ -75,6 +98,7 @@ python scripts/update_after_matchday.py --manual-csv data/raw/manual/matchday_5.
 | Path                                                  | Description                                |
 | ----------------------------------------------------- | ------------------------------------------ |
 | `outputs/predictions/group_stage_predictions.csv`     | Per-match H/D/A probabilities              |
+| `outputs/predictions/scoreline_predictions.csv`       | Per-match outcome + top-3 likely scorelines |
 | `outputs/predictions/knockout_predictions.csv`        | Knockout-match probabilities               |
 | `outputs/picks/quiniela_safe.csv`                     | Conservative picks                         |
 | `outputs/picks/quiniela_balanced.csv`                 | Expected-value picks                       |

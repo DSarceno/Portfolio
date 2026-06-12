@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from src.data.data_loader import DataLoader
 from src.data.tournament_updater import TournamentUpdater
+from src.ensemble.blender import BlendWeights, ProbabilityBlender
 from src.ensemble.pick_optimizer import PickOptimizer
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
@@ -138,6 +139,7 @@ def _build_predictor() -> MatchPredictor:
         },
         poisson_model=art.get("poisson"),
         calibrator=art.get("calibrator"),
+        blender=ProbabilityBlender(weights=BlendWeights.from_config(config)),
     )
 
 
@@ -275,7 +277,9 @@ def strategy_quiniela(payload: StrategyRequest) -> dict:
     poisson = art.get("poisson")
     score_predictor = ScorePredictor(poisson) if poisson is not None else None
     strategy = QuinielaStrategy(score_predictor=score_predictor)
-    sheet = strategy.generate(probs, profile=payload.risk_profile, include_scoreline=payload.include_scoreline)
+    sheet = strategy.generate(
+        probs, profile=payload.risk_profile, include_scoreline=payload.include_scoreline
+    )
     return {"picks": sheet.to_dict(orient="records")}
 
 
@@ -294,7 +298,9 @@ def update_results(payload: UpdateRequest) -> dict:
 @app.get("/diagnostics/calibration")
 def calibration_report() -> dict:
     """Return the latest calibration report (if available)."""
-    path = Path(config.get("paths.outputs_dir", "outputs")) / "diagnostics" / "calibration_report.csv"
+    path = (
+        Path(config.get("paths.outputs_dir", "outputs")) / "diagnostics" / "calibration_report.csv"
+    )
     if not path.exists():
         return {"error": f"{path} not found"}
     return {"records": pd.read_csv(path).to_dict(orient="records")}

@@ -28,6 +28,10 @@ data:
       csv_path: "data/raw/kaggle/results.csv"
       include_friendlies: true
       include_qualifications: true
+    squad_value:
+      enabled: true                 # A.2 valor de plantilla; false = no genera las features
+      historical_dates: ["2018-06-01", "2022-06-01"]
+      current_date: "2026-06-01"
 
 tournament:
   year: 2026
@@ -54,7 +58,13 @@ ratings:
     enabled: true
     k_elo: 30
     k_pi: 30
-    k_poisson: 20
+    k_poisson: 35
+    mixture_prior:
+      enabled: false       # A.4 élite vs regular. Backtest 2018/2022: empeora log-loss
+                           # (+2.3%) y accuracy (-2.4pts) con estos priors a mano. Off.
+                           # true = reactivar (requiere re-tunear priors élite/regular).
+      elite_fraction: 0.30 # top 30% por fuerza dentro de la confederación = élite
+      min_matches: 20      # compuerta: <20 partidos nunca es élite (anti-minnow)
   time_decay:
     enabled: true
     xi_elo: 0.0015

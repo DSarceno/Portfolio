@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean lint format test test-cov bootstrap kaggle ratings pipeline train predict picks simulate update api docker-build docker-up
+.PHONY: help install install-dev clean lint format test test-cov bootstrap kaggle ratings squad-values pipeline train predict scorelines picks simulate backtest update api docker-build docker-up
 
 PY ?= python
 
@@ -15,10 +15,13 @@ help:
 	@echo "  test-cov      Run pytest with coverage"
 	@echo "  bootstrap     Bootstrap historical data"
 	@echo "  ratings       Build pre-tournament ratings"
+	@echo "  squad-values  Build squad-value snapshots (A.2)"
 	@echo "  pipeline      Run full ETL + feature pipeline"
 	@echo "  train         Train models"
 	@echo "  predict       Predict group-stage matches"
+	@echo "  scorelines    Predict most likely scorelines per match"
 	@echo "  simulate      Simulate the tournament"
+	@echo "  backtest      Cross-tournament backtest (diagnostic)"
 	@echo "  update        Update after a matchday"
 	@echo "  picks         Export quiniela sheet"
 	@echo "  api           Run the FastAPI server"
@@ -57,6 +60,9 @@ kaggle:
 ratings:
 	$(PY) scripts/build_ratings.py
 
+squad-values:
+	$(PY) scripts/build_squad_values.py
+
 pipeline:
 	$(PY) scripts/run_pipeline.py
 
@@ -66,8 +72,14 @@ train:
 predict:
 	$(PY) scripts/predict_group_stage.py
 
+scorelines:
+	$(PY) scripts/predict_scorelines.py
+
 simulate:
 	$(PY) scripts/simulate_tournament.py
+
+backtest:
+	$(PY) scripts/backtest_tournaments.py --years 2018 2022
 
 update:
 	$(PY) scripts/update_after_matchday.py
