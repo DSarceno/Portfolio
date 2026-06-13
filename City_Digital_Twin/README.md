@@ -33,7 +33,7 @@ Read these first — they define the scientific and architectural foundation:
 
 ## Status
 
-**Phases 1 and 3 complete.** The scientific core works end-to-end:
+**Phases 1, 3, and 4 complete.** The scientific core works end-to-end:
 
 - **Phase 1** — a road network with a canonical edge index, a synthetic observation
   generator, a Kalman Filter estimating hidden congestion from noisy/partial observations,
@@ -43,8 +43,11 @@ Read these first — they define the scientific and architectural foundation:
   behind the same interface; the Kalman Filter becomes an **Extended Kalman Filter**
   (autograd Jacobian) for nonlinear dynamics, and the Neural ODE beats the linear baseline
   on forecast RMSE for nonlinear traffic.
+- **Phase 4** — a nonlinear simulation **world model** with congestion saturation and
+  *directional* upstream **bottleneck back-pressure**, plus **zone-level stress**
+  aggregation — kept separate from the estimator so state-estimation interfaces are intact.
 
-Validated by **32 tests**, `ruff` and `mypy` clean. API and visualization are later phases.
+Validated by **41 tests**, `ruff` and `mypy` clean. API and visualization are later phases.
 See [PROJECT_VISION.md](PROJECT_VISION.md#phases) for the roadmap.
 
 ### Run it
@@ -53,7 +56,7 @@ See [PROJECT_VISION.md](PROJECT_VISION.md#phases) for the roadmap.
 python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"  # Windows
 # optional Phase-3 ML stack (Neural ODE); tests skip cleanly without it:
 .venv/Scripts/python -m pip install -e ".[ml]"
-pytest          # 32 tests
+pytest          # 41 tests
 ruff check .
 mypy src
 ```

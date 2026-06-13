@@ -79,6 +79,25 @@ class RoadNetwork:
         degree = self.adjacency.sum(axis=1)
         return np.diag(degree) - self.adjacency
 
+    def downstream_matrix(self) -> np.ndarray:
+        """Directed edge incidence: ``D[i, j] = 1`` when edge ``i`` feeds into edge ``j``.
+
+        Edge ``i`` feeds ``j`` when ``head(i) == tail(j)``. Row ``i`` lists the downstream
+        edges of ``i``; column ``j`` lists the upstream edges of ``j``. Used by the
+        simulation layer to back up congestion *upstream* from a bottleneck.
+        """
+        tails = [e[0] for e in self.edges]
+        heads = [e[1] for e in self.edges]
+        out_edges: dict = defaultdict(list)
+        for j, u in enumerate(tails):
+            out_edges[u].append(j)
+        matrix = np.zeros((self.n_edges, self.n_edges))
+        for i, v in enumerate(heads):
+            for j in out_edges.get(v, ()):
+                if i != j:
+                    matrix[i, j] = 1.0
+        return matrix
+
     # ------------------------------------------------------------------ builders
     @classmethod
     def from_digraph(

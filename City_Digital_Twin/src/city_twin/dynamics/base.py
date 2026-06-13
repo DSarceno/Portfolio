@@ -15,8 +15,13 @@ import numpy as np
 
 
 @runtime_checkable
-class DynamicsModel(Protocol):
-    """State-transition model over per-edge congestion."""
+class StepModel(Protocol):
+    """Anything that can advance a congestion state one step.
+
+    Satisfied by every dynamics model and by the simulation world model. Used where only
+    forward rollout is needed (e.g. the synthetic ground-truth generator), without
+    requiring covariance propagation.
+    """
 
     @property
     def n_edges(self) -> int: ...
@@ -24,6 +29,11 @@ class DynamicsModel(Protocol):
     def step(self, x: np.ndarray, u: np.ndarray | None = None) -> np.ndarray:
         """Advance the mean state one step (deterministic)."""
         ...
+
+
+@runtime_checkable
+class DynamicsModel(StepModel, Protocol):
+    """State-transition model usable by the estimator (adds covariance propagation)."""
 
     def predict(
         self, x: np.ndarray, cov: np.ndarray, process_cov: np.ndarray

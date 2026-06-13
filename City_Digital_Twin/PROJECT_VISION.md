@@ -84,5 +84,5 @@ architecture drift, or dashboard-first thinking are unacceptable outcomes.
 | **1 — Minimal Scientific Prototype** *(done)* | Network, observation schema, hidden state, basic estimation, simple dynamics, simulation loop | System estimates hidden state from noisy observations, forecasts its evolution, and simulates a simple intervention |
 | **2 — Data Engineering & Storage** | Reliable ingestion + storage (PostgreSQL/TimescaleDB), validation, weather/incidents | Data can be ingested, validated, stored, and retrieved for modeling |
 | **3 — Dynamics & Scientific ML** *(done)* | Neural ODEs, hybrid physics-informed, network-aware dynamics | Dynamics model improves forecasts while preserving interpretability and validation |
-| **4 — Simulation Engine** | Closures, accidents, rainfall, bottleneck propagation, saturation | System can evaluate hypothetical interventions |
+| **4 — Simulation Engine** *(done)* | Closures, accidents, rainfall, bottleneck propagation, saturation | System can evaluate hypothetical interventions |
 | **5 — API & Visualization** | FastAPI endpoints, Streamlit prototype, scenario comparison | Visualization helps interpret estimation and simulation results — without becoming dashboard-first |

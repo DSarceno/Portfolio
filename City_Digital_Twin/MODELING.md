@@ -109,6 +109,20 @@ Interventions are **inputs `u_t`** that modify the network or the transition ope
 
 Scenarios are compared against a **baseline** run with identical noise seeds.
 
+**Phase 4 (implemented) — nonlinear world model.** For studying interventions, the
+ground-truth world (`city_twin.simulation.world.WorldModel`) augments decay + diffusion
+with two physically-motivated nonlinearities, kept *separate* from the estimator's
+dynamics so state-estimation interfaces are untouched:
+
+- **Saturation:** ``g · x · (1 − x)`` — congestion self-reinforces while building and
+  vanishes at both the free-flow (0) and saturated (1) limits, keeping ``x ∈ [0, 1]``.
+- **Bottleneck back-pressure:** ``b · (D x) · (1 − x)`` using the directed downstream
+  matrix ``D`` — a saturated edge backs up its *upstream* neighbours (directional, not the
+  symmetric diffusion), scaled by remaining capacity.
+
+**Zone-level stress** (`city_twin.simulation.zones`) aggregates per-edge congestion to
+per-zone stress (length-weighted mean or max) to answer "which zones approach saturation?"
+
 ## Mathematical assumptions
 
 **Safe to assume:** observations contain noise; key states are hidden; dynamics evolve

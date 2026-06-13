@@ -22,14 +22,15 @@ Read [PROJECT_VISION.md](PROJECT_VISION.md), [ARCHITECTURE.md](ARCHITECTURE.md),
 
 ## Current phase
 
-**Phases 1 and 3 complete.** Phase 1: network, observation schema + synthetic generator,
-Kalman estimator, graph-diffusion dynamics, simulation loop, scenario interventions.
-Phase 3: hybrid physics-informed Neural ODE dynamics (torchdiffeq) behind the same
-`DynamicsModel` interface; the Kalman Filter acts as an EKF (autograd Jacobian) for
-nonlinear dynamics, and the Neural ODE beats the linear baseline on forecast RMSE. All
-validated (32 tests, ruff + mypy clean). ML deps are optional (`pip install -e ".[ml]"`);
-tests skip cleanly without torch. Next candidate: Phase 2 (storage) or Phase 4 (richer
-simulation) — see PROJECT_VISION.md → Phases.
+**Phases 1, 3, and 4 complete.** Phase 1: network, observation schema + synthetic
+generator, Kalman estimator, graph-diffusion dynamics, simulation loop, scenario
+interventions. Phase 3: hybrid physics-informed Neural ODE dynamics (torchdiffeq) behind
+the same `DynamicsModel` interface; Kalman Filter acts as an EKF (autograd Jacobian) for
+nonlinear dynamics and beats the linear baseline on forecast RMSE. Phase 4: nonlinear
+`WorldModel` (saturation + directional upstream bottleneck back-pressure) and zone-level
+stress aggregation, kept separate from the estimator. All validated (41 tests, ruff + mypy
+clean). ML deps are optional (`pip install -e ".[ml]"`); tests skip cleanly without torch.
+Next candidate: Phase 2 (storage) or Phase 5 (API/viz) — see PROJECT_VISION.md → Phases.
 
 ## Validation commands
 

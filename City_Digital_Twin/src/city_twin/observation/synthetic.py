@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from city_twin.dynamics.graph_diffusion import GraphDiffusionDynamics
+from city_twin.dynamics.base import StepModel
 from city_twin.ingestion.network import RoadNetwork
 from city_twin.observation.schema import Observation, congestion_to_speed, speed_to_congestion
 from city_twin.scenarios.interventions import Intervention
@@ -31,7 +31,7 @@ class SyntheticObservations:
     """
 
     network: RoadNetwork
-    dynamics: GraphDiffusionDynamics
+    dynamics: StepModel
     noise_speed_kmh: float = 4.0
     observed_fraction: float = 0.6
     process_noise: float = 0.01
