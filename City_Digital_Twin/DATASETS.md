@@ -59,15 +59,32 @@ The exact noise and dynamics models are specified in [MODELING.md](MODELING.md).
 
 ## Real data adapters (later phases)
 
-Each real source implements the same **Observation Layer** contract (emit `(timestamp,
-edge_id, speed, travel_time, source)` records keyed to the canonical edge index). Likely
-order of integration and their caveats:
+Each real source implements the same **Observation Layer** contract: emit an
+`Observation` (per-edge congestion + mask) keyed to the canonical edge index, so it feeds
+the Kalman/EKF unchanged. Status and caveats:
 
-| Source | Signal | Caveats |
-|--------|--------|---------|
-| **Google Routes/Maps API** | travel time / typical-traffic speed per segment | paid, rate-limited, indirect observation of latent state |
-| **Waze / TomTom / HERE** | speeds, jams, incidents | require commercial/partnership agreements |
-| **Municipal / open data** (Transmetro, Transurbano GTFS, EMETRA) | transit schedules, limited real-time | mostly transit, sparse real-time coverage |
+| Source | Signal | Status / caveats |
+|--------|--------|------------------|
+| **Google Routes API** | in-traffic duration per segment | **implemented** — `observation/adapters/google_routes.py`; paid, rate-limited, indirect |
+| **Waze / TomTom / HERE** | speeds, jams, incidents | planned; require commercial/partnership agreements |
+| **Municipal / open data** (Transmetro, Transurbano GTFS, EMETRA) | transit schedules, limited real-time | planned; mostly transit, sparse real-time |
+
+### Google Routes adapter (implemented)
+
+`GoogleRoutesAdapter` queries `computeRouteMatrix` (`TRAFFIC_AWARE`) using each edge's
+endpoint coordinates and derives, per the confirmed dataset-interpretation assumption:
+
+```
+speed_kmh  = edge_length_m / in_traffic_duration_s * 3.6
+congestion = 1 - speed / free_flow_speed   (clipped to [0, 1])
+```
+
+Edges without coordinates, or with no route found, are left **unobserved** (mask `False`);
+the estimator infers them. The HTTP call sits behind a `Transport` boundary, so tests run
+with canned responses and **no API key**. Live use reads `GOOGLE_MAPS_API_KEY` from the
+environment (never hardcoded). Edge endpoint coordinates come from OSM node `x`/`y`
+(longitude/latitude), captured by `RoadNetwork.from_digraph` / `from_osm` into
+`origin_latlon` / `dest_latlon`.
 
 ## Exogenous data (Phase 2+)
 

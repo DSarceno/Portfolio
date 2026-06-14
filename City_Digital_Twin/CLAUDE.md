@@ -28,9 +28,12 @@ interventions. Phase 3: hybrid physics-informed Neural ODE dynamics (torchdiffeq
 the same `DynamicsModel` interface; Kalman Filter acts as an EKF (autograd Jacobian) for
 nonlinear dynamics and beats the linear baseline on forecast RMSE. Phase 4: nonlinear
 `WorldModel` (saturation + directional upstream bottleneck back-pressure) and zone-level
-stress aggregation, kept separate from the estimator. All validated (41 tests, ruff + mypy
-clean). ML deps are optional (`pip install -e ".[ml]"`); tests skip cleanly without torch.
-Next candidate: Phase 2 (storage) or Phase 5 (API/viz) — see PROJECT_VISION.md → Phases.
+stress aggregation, kept separate from the estimator. First real observation source:
+`GoogleRoutesAdapter` (`observation/adapters/google_routes.py`) emits the Observation
+contract from the Routes API behind a mockable `Transport` (no key needed for tests; live
+use reads `GOOGLE_MAPS_API_KEY`). All validated (47 tests, ruff + mypy clean). ML deps are
+optional (`pip install -e ".[ml]"`); tests skip cleanly without torch. Next candidate:
+Phase 2 (storage) or Phase 5 (API/viz) — see PROJECT_VISION.md → Phases.
 
 ## Validation commands
 

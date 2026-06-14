@@ -46,8 +46,12 @@ Read these first — they define the scientific and architectural foundation:
 - **Phase 4** — a nonlinear simulation **world model** with congestion saturation and
   *directional* upstream **bottleneck back-pressure**, plus **zone-level stress**
   aggregation — kept separate from the estimator so state-estimation interfaces are intact.
+- **First real data source** — a **Google Routes API** observation adapter
+  (`observation/adapters/google_routes.py`) that derives per-edge congestion from
+  in-traffic durations and emits the standard `Observation`. Tests use a mocked transport
+  (no API key); live use reads `GOOGLE_MAPS_API_KEY`.
 
-Validated by **41 tests**, `ruff` and `mypy` clean. API and visualization are later phases.
+Validated by **47 tests**, `ruff` and `mypy` clean. API and visualization are later phases.
 See [PROJECT_VISION.md](PROJECT_VISION.md#phases) for the roadmap.
 
 ### Run it
@@ -56,7 +60,7 @@ See [PROJECT_VISION.md](PROJECT_VISION.md#phases) for the roadmap.
 python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"  # Windows
 # optional Phase-3 ML stack (Neural ODE); tests skip cleanly without it:
 .venv/Scripts/python -m pip install -e ".[ml]"
-pytest          # 41 tests
+pytest          # 47 tests
 ruff check .
 mypy src
 ```

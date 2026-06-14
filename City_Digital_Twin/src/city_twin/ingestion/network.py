@@ -51,6 +51,8 @@ class RoadNetwork:
     free_flow_speed_kmh: np.ndarray  # (N,)
     lanes: np.ndarray  # (N,) float; NaN where unknown
     adjacency: np.ndarray  # (N, N) symmetric 0/1, no self-loops
+    origin_latlon: np.ndarray  # (N, 2) [lat, lon] of each edge's tail node; NaN if unknown
+    dest_latlon: np.ndarray  # (N, 2) [lat, lon] of each edge's head node; NaN if unknown
 
     def __post_init__(self) -> None:
         n = len(self.edges)
@@ -63,8 +65,18 @@ class RoadNetwork:
                 raise ValueError(f"{name} must have shape ({n},), got {arr.shape}")
         if self.adjacency.shape != (n, n):
             raise ValueError(f"adjacency must have shape ({n}, {n})")
+        for name, arr in (("origin_latlon", self.origin_latlon), ("dest_latlon", self.dest_latlon)):
+            if arr.shape != (n, 2):
+                raise ValueError(f"{name} must have shape ({n}, 2), got {arr.shape}")
         if np.any(self.free_flow_speed_kmh <= 0):
             raise ValueError("free_flow_speed_kmh must be strictly positive")
+
+    def has_coordinates(self, edge_index: int) -> bool:
+        """True when both endpoints of the given edge have known coordinates."""
+        return bool(
+            np.all(np.isfinite(self.origin_latlon[edge_index]))
+            and np.all(np.isfinite(self.dest_latlon[edge_index]))
+        )
 
     @property
     def n_edges(self) -> int:
@@ -123,6 +135,8 @@ class RoadNetwork:
         length = np.empty(n)
         free_flow = np.empty(n)
         lanes = np.full(n, np.nan)
+        origin_latlon = np.full((n, 2), np.nan)
+        dest_latlon = np.full((n, 2), np.nan)
         tails = [t[0] for t in triples]
         heads = [t[1] for t in triples]
 
@@ -138,6 +152,9 @@ class RoadNetwork:
                     lanes[i] = float(raw_lanes)
                 except (TypeError, ValueError):
                     pass
+            # OSM node coordinates: x = longitude, y = latitude. Stored as [lat, lon].
+            origin_latlon[i] = _node_latlon(graph, u)
+            dest_latlon[i] = _node_latlon(graph, v)
 
         # Edge i feeds edge j when head(i) == tail(j); symmetrize for diffusion.
         out_edges: dict = defaultdict(list)
@@ -151,7 +168,9 @@ class RoadNetwork:
         adjacency = np.maximum(adjacency, adjacency.T)
         np.fill_diagonal(adjacency, 0.0)
 
-        return cls(edge_keys, length, free_flow, lanes, adjacency)
+        return cls(
+            edge_keys, length, free_flow, lanes, adjacency, origin_latlon, dest_latlon
+        )
 
     @classmethod
     def from_osm(
@@ -183,6 +202,19 @@ class RoadNetwork:
             data["free_flow_speed"] = DEFAULT_FREE_FLOW_KMH.get(highway, DEFAULT_SPEED_KMH)
 
         return cls.from_digraph(graph)
+
+
+def _node_latlon(graph: nx.DiGraph, node: object) -> tuple[float, float]:
+    """Return ``(lat, lon)`` for a node from OSM ``y``/``x`` attrs, or ``(nan, nan)``."""
+    attrs = graph.nodes[node]
+    lon = attrs.get("x")
+    lat = attrs.get("y")
+    if lon is None or lat is None:
+        return (float("nan"), float("nan"))
+    try:
+        return (float(lat), float(lon))
+    except (TypeError, ValueError):
+        return (float("nan"), float("nan"))
 
 
 def strategic_subgraph(graph: nx.MultiDiGraph) -> nx.MultiDiGraph:

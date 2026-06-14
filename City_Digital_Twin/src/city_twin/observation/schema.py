@@ -14,10 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import numpy.typing as npt
 
 
 def speed_to_congestion(
-    speed_kmh: np.ndarray, free_flow_speed_kmh: np.ndarray
+    speed_kmh: npt.ArrayLike, free_flow_speed_kmh: npt.ArrayLike
 ) -> np.ndarray:
     """Convert measured speed to congestion ``1 - speed/free_flow``, clipped to ``[0, 1]``."""
     ratio = np.asarray(speed_kmh, dtype=float) / np.asarray(free_flow_speed_kmh, dtype=float)
@@ -25,7 +26,7 @@ def speed_to_congestion(
 
 
 def congestion_to_speed(
-    congestion: np.ndarray, free_flow_speed_kmh: np.ndarray
+    congestion: npt.ArrayLike, free_flow_speed_kmh: npt.ArrayLike
 ) -> np.ndarray:
     """Convert congestion to expected speed ``free_flow * (1 - congestion)``."""
     c = np.clip(np.asarray(congestion, dtype=float), 0.0, 1.0)
