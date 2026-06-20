@@ -140,6 +140,15 @@ class TournamentUpdater:
             ):
                 if pd.isna(team):
                     continue
+                gf_val = pd.to_numeric(gf, errors="coerce")
+                ga_val = pd.to_numeric(ga, errors="coerce")
+                if pd.isna(gf_val) or pd.isna(ga_val):
+                    logger.warning(
+                        "Skipping non-numeric score for team %s (gf=%r, ga=%r)", team, gf, ga
+                    )
+                    continue
+                gf_val = float(gf_val)
+                ga_val = float(ga_val)
                 rec = records.setdefault(
                     team,
                     {
@@ -151,13 +160,13 @@ class TournamentUpdater:
                         "world_cup_clean_sheets": 0.0,
                     },
                 )
-                rec["world_cup_goals_for_so_far"] += float(gf)
-                rec["world_cup_goals_against_so_far"] += float(ga)
-                rec["world_cup_goal_diff_so_far"] += float(gf) - float(ga)
-                if ga == 0:
+                rec["world_cup_goals_for_so_far"] += gf_val
+                rec["world_cup_goals_against_so_far"] += ga_val
+                rec["world_cup_goal_diff_so_far"] += gf_val - ga_val
+                if ga_val == 0:
                     rec["world_cup_clean_sheets"] += 1
-                if gf > ga:
+                if gf_val > ga_val:
                     rec["world_cup_points_so_far"] += 3
-                elif gf == ga:
+                elif gf_val == ga_val:
                     rec["world_cup_points_so_far"] += 1
         return pd.DataFrame(list(records.values()))

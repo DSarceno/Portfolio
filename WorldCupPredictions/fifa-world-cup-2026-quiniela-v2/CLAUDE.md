@@ -4,6 +4,22 @@ Guía de contexto para sesiones de Claude Code que trabajen sobre este repositor
 
 ---
 
+## Content Generation Context
+
+When generating content from this project:
+
+- Prioritize mathematical rigor over marketing language.
+- Explain the theory behind every major algorithm.
+- Highlight engineering trade-offs.
+- Connect implementation decisions with scientific principles.
+- Write as a Data Scientist with a Physics background.
+- Avoid generic AI content.
+- Emphasize reproducibility and experimentation.
+- Include practical MLOps lessons whenever applicable.
+- Focus on what was learned, not only what was built.
+
+---
+
 ## 1. Resumen del proyecto
 
 **Nombre:** FIFA World Cup 2026 Quiniela Predictor V2

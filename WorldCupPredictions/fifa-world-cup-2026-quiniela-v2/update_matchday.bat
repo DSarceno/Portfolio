@@ -18,7 +18,7 @@ REM ============================================================
 setlocal enabledelayedexpansion
 cd /d %~dp0
 
-set "N_RUNS=2000"
+set "N_RUNS=10000"
 set "ARG=%~1"
 if "%ARG%"=="" set "ARG=data\raw\manual\wc2026_results.csv"
 
