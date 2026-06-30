@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.ensemble.blender import BlendWeights, ProbabilityBlender
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
 from src.models.poisson_model import PoissonScoreModel
@@ -71,10 +72,19 @@ def main() -> int:
     except FileNotFoundError:
         calibrator = None
 
+    blend_weights = BlendWeights.from_config(config)
+    logger.info(
+        "Blend weights: ratings=%.2f multinomial=%.2f xgboost=%.2f poisson=%.2f",
+        blend_weights.ratings,
+        blend_weights.multinomial,
+        blend_weights.xgboost,
+        blend_weights.poisson,
+    )
     predictor = MatchPredictor(
         outcome_models={"multinomial": mn, "xgboost": xgb},
         poisson_model=poisson,
         calibrator=calibrator,
+        blender=ProbabilityBlender(weights=blend_weights),
     )
     preds = predictor.predict_matches(fixtures)
 

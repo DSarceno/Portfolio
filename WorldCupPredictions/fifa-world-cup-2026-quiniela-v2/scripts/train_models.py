@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import pandas as pd
 
 from src.data.data_splitter import temporal_split
+from src.models.calibration import CalibrationStrategy
 from src.ratings.shrinkage import RatingShrinker
 from src.training.trainer import Trainer
 from src.utils.config import load_config
@@ -58,12 +59,21 @@ def main() -> int:
     if lasso_enabled:
         logger.info("LASSO feature selection enabled (C=%.3f)", lasso_C)
 
+    cal_name = str(config.model_params.get("calibration", {}).get("strategy", "isotonic")).lower()
+    try:
+        calibration_strategy = CalibrationStrategy(cal_name)
+    except ValueError:
+        logger.warning("Unknown calibration.strategy '%s'; falling back to isotonic", cal_name)
+        calibration_strategy = CalibrationStrategy.ISOTONIC
+    logger.info("Calibration strategy: %s", calibration_strategy.value)
+
     trainer = Trainer(
         hyperparameters={
             "multinomial": config.model_params.get("models", {}).get("multinomial", {}).get("hyperparameters", {}),
             "xgboost": config.model_params.get("models", {}).get("xgboost", {}).get("hyperparameters", {}),
             "poisson": config.model_params.get("models", {}).get("poisson", {}).get("hyperparameters", {}),
         },
+        calibration_strategy=calibration_strategy,
         shrinker=shrinker,
         lasso_select=lasso_enabled,
         lasso_C=lasso_C,

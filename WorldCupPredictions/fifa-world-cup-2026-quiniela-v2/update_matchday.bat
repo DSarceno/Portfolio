@@ -50,59 +50,80 @@ if errorlevel 1 (
 
 REM ---- Paso 1: ingerir resultados ----
 echo.
-echo  [1/8] Ingiriendo resultados
+echo  [1/9] Ingiriendo resultados
 if exist "%ARG%" goto :use_csv
-echo  [1/8]   -^> modo fecha: %ARG%
+echo  [1/9]   -^> modo fecha: %ARG%
 python scripts\update_after_matchday.py --date %ARG%
 if errorlevel 1 goto :failure_update
 goto :after_ingest
 :use_csv
-echo  [1/8]   -^> CSV: %ARG%
+echo  [1/9]   -^> CSV: %ARG%
 python scripts\update_after_matchday.py --manual-csv "%ARG%"
 if errorlevel 1 goto :failure_update
 :after_ingest
 
-REM ---- Paso 2: ratings ----
+REM ---- Paso 2: ingerir bracket de knockout ----
+REM  Mete los cruces de cada ronda (R16, 4tos, ...) que ya hayas llenado en
+REM  data\raw\manual\wc2026_knockout_bracket.csv. Es seguro re-correrlo: NO
+REM  pisa los partidos que ya tienen resultado (esos se respetan).
 echo.
-echo  [2/8] Reconstruyendo ratings
+echo  [2/9] Ingiriendo bracket de knockout
+python scripts\ingest_knockout_bracket.py
+if errorlevel 1 goto :failure_step
+
+REM ---- Paso 3: ratings ----
+REM  Elo/pi/form SI se actualizan con cada resultado (son baratos y estables).
+echo.
+echo  [3/9] Reconstruyendo ratings
 python scripts\build_ratings.py
 if errorlevel 1 goto :failure_step
 
-REM ---- Paso 3: features ----
-echo.
-echo  [3/8] Reconstruyendo feature matrix
-python scripts\run_pipeline.py
-if errorlevel 1 goto :failure_step
+REM  NOTA: los modelos (XGBoost/Poisson/multinomial/calibracion) NO se reentrenan
+REM  durante el torneo. Se entrenaron y validaron antes del Mundial y se congelan:
+REM  reentrenar con un puñado de partidos nuevos los desestabiliza (paso a paso el
+REM  multinomial llego a saturar a ~99% al equipo visitante). Para reentrenar a
+REM  proposito: corre  scripts\run_pipeline.py  y  scripts\train_models.py  a mano.
 
-REM ---- Paso 4: entrenamiento ----
+REM ---- Paso 4: predicciones H/D/A (grupos) ----
 echo.
-echo  [4/8] Reentrenando modelos
-python scripts\train_models.py
-if errorlevel 1 goto :failure_step
-
-REM ---- Paso 5: predicciones H/D/A ----
-echo.
-echo  [5/8] Prediciendo H/D/A
+echo  [4/9] Prediciendo H/D/A (grupos, si quedan)
 python scripts\predict_group_stage.py
+if errorlevel 1 goto :failure_step
+
+REM ---- Paso 5: predicciones knockout ----
+echo.
+echo  [5/9] Prediciendo eliminatorias
+python scripts\predict_knockout.py
 if errorlevel 1 goto :failure_step
 
 REM ---- Paso 6: marcadores ----
 echo.
-echo  [6/8] Prediciendo marcadores mas probables
+echo  [6/9] Prediciendo marcadores mas probables
 python scripts\predict_scorelines.py
 if errorlevel 1 goto :failure_step
 
 REM ---- Paso 7: quinielas ----
 echo.
-echo  [7/8] Exportando quinielas
+echo  [7/9] Exportando quinielas
 python scripts\export_quiniela_sheet.py
 if errorlevel 1 goto :failure_step
 
 REM ---- Paso 8: simulacion ----
 echo.
-echo  [8/8] Simulando torneo Monte-Carlo (n_runs=%N_RUNS%)
+echo  [8/9] Simulando torneo Monte-Carlo (n_runs=%N_RUNS%)
 python scripts\simulate_tournament.py --n-runs %N_RUNS%
 if errorlevel 1 goto :failure_step
+
+REM ---- Paso 9: snapshot datado de outputs ----
+REM  Archiva una copia datada de outputs/ en outputs\snapshots\<fecha>\ con un
+REM  manifest.json (commit, partidos jugados, top-5 al titulo). Los outputs en
+REM  vivo se sobrescriben en cada corrida; el snapshot preserva el pronostico de
+REM  esta jornada y alimenta la comparacion pre-Mundial vs lo que paso. Re-correr
+REM  el mismo dia refresca el snapshot del dia. Que falle NO aborta la jornada.
+echo.
+echo  [9/9] Guardando snapshot datado de outputs
+python scripts\snapshot_outputs.py
+if errorlevel 1 echo  [9/9]   AVISO: el snapshot fallo (no critico). Revisa logs\updates\.
 
 echo.
 echo ============================================================
@@ -114,6 +135,7 @@ echo   outputs\predictions\group_stage_predictions.csv
 echo   outputs\predictions\scoreline_predictions.csv
 echo   outputs\picks\quiniela_balanced.csv
 echo   outputs\simulations\championship_probabilities.csv
+echo   outputs\snapshots\^<fecha^>\  (copia datada de esta jornada)
 endlocal
 exit /b 0
 

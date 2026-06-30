@@ -17,8 +17,8 @@ Generate match-by-match outcome and scoreline forecasts for the 48-team tourname
 - **Most-likely scorelines** per match (`scoreline_predictions.csv`).
 - **Leakage-free cross-tournament backtester** that is the arbiter for every modelling change.
 - Dedicated quiniela strategy layer separating "true probability" from "best pick".
-- Daily update workflow (`update_matchday.bat`) that refreshes ratings, features, and predictions after each matchday.
-- FastAPI service exposing all key operations; four polished analysis notebooks.
+- Daily update workflow (`update_matchday.bat`) that refreshes ratings and predictions after each matchday (the predictive models are trained pre-tournament and frozen during it).
+- FastAPI service exposing all key operations; six polished analysis notebooks (incl. a quiniela deep-dive and a live knockout bracket).
 
 ## Quick start
 
@@ -85,7 +85,11 @@ python scripts/update_after_matchday.py --date 2026-06-15
 This will:
 
 1. Pull official fixtures/results for that date (or read a manual results CSV).
-2. Append them to the canonical match table (dedup replaces the scheduled fixture).
+2. Merge them into the canonical match table. The `--manual-csv` path runs in
+   **replace mode** by default (purge + re-ingest), so the CSV is authoritative and
+   edits/corrections propagate without leaving orphan rows. Use the fixture's **UTC**
+   date (look it up with `fixture_date.bat <team>`) so the result merges onto the
+   scheduled fixture instead of creating a phantom match.
 3. Update Elo / PI / form ratings.
 4. Refresh tournament-state features.
 5. Re-train (or warm-start) outcome and scoreline models.

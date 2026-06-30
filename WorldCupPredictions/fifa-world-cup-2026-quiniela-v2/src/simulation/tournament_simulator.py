@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from src.simulation.bracket_generator import build_round_of_32_bracket
+from src.simulation.bracket_generator import BracketPair, build_round_of_32_bracket
 from src.simulation.group_stage import (
     VectorizedGroupStageEngine,
     simulate_group_stage,
@@ -113,6 +113,80 @@ class TournamentSimulator:
             return cache.get(key, _UNIFORM_FALLBACK)
 
         return cached_fn
+
+    def run_from_known_bracket(
+        self,
+        bracket: list[BracketPair],
+        n_runs: int = 10_000,
+        known_winners: dict[frozenset[str], str] | None = None,
+    ) -> SimulationSummary:
+        """Simulate *only* the knockout stage from a known round-of-32.
+
+        Use this once the group stage is over and the real round-of-32 ties are
+        known. Unlike :meth:`run`, this does **not** re-simulate the group stage
+        (which, mid/post-groups, silently drops teams whose group is already
+        decided); it seeds the bracket from the actual matchups and Monte-Carlo
+        simulates the knockout only. Every one of the 32 teams is already
+        qualified, so ``qualification_probs`` is 1.0 for each.
+
+        Args:
+            bracket: The real round-of-32 pairings (see
+                :func:`load_known_round_of_32`).
+            n_runs: Number of knockout repetitions.
+            known_winners: Optional map of already-played ties to their winner,
+                forwarded to :func:`simulate_knockout` so decided ties are not
+                re-simulated (the estimate conditions on real results).
+
+        Returns:
+            :class:`SimulationSummary`.
+        """
+        round_reached: dict[tuple[str, str], int] = defaultdict(int)
+        championships: dict[str, int] = defaultdict(int)
+        bracket_path_log: list[dict] = []
+
+        for run_idx in tqdm(range(n_runs), desc="Simulating knockout"):
+            rng = np.random.default_rng(self.seed + run_idx)
+            ko = simulate_knockout(bracket, self.predict_fn, rng=rng, known_winners=known_winners)
+            for team, stage in ko.rounds_reached.items():
+                round_reached[(team, stage)] += 1
+            championships[ko.champion] += 1
+            bracket_path_log.append(
+                {
+                    "run": run_idx,
+                    "champion": ko.champion,
+                    "runner_up": ko.runner_up,
+                    "third_place": ko.third_place,
+                }
+            )
+
+        n = max(n_runs, 1)
+        teams = sorted({t for pair in bracket for t in (pair.team_a, pair.team_b)})
+        qualification_df = pd.DataFrame(
+            [{"team": team, "qualification_prob": 1.0} for team in teams]
+        )
+
+        round_df = pd.DataFrame(
+            [
+                {"team": team, "stage": stage, "prob": count / n}
+                for (team, stage), count in round_reached.items()
+            ]
+        ).sort_values(["team", "stage"]).reset_index(drop=True)
+
+        champ_df = (
+            pd.DataFrame(
+                [{"team": team, "championship_prob": count / n} for team, count in championships.items()]
+            )
+            .sort_values("championship_prob", ascending=False)
+            .reset_index(drop=True)
+        )
+
+        return SimulationSummary(
+            n_runs=n,
+            qualification_probs=qualification_df,
+            round_reached_probs=round_df,
+            championship_probs=champ_df,
+            bracket_paths=pd.DataFrame(bracket_path_log),
+        )
 
     def run(self, n_runs: int = 10_000) -> SimulationSummary:
         """Run *n_runs* simulations and aggregate the statistics.

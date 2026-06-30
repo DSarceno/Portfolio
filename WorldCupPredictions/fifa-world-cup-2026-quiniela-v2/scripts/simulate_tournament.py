@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 import pandas as pd
 
+from src.data.data_loader import DataLoader
 from src.ensemble.blender import BlendWeights, ProbabilityBlender
 from src.models.base_model import BaseOutcomeModel
 from src.models.calibration import ProbabilityCalibrator
@@ -22,10 +23,13 @@ from src.prediction.feature_builder import (
     build_pairwise_feature_matrix,
 )
 from src.prediction.predictor import MatchPredictor
+from src.simulation.bracket_generator import BracketPair, load_known_round_of_32
 from src.simulation.tournament_simulator import TournamentSimulator
 from src.utils.config import load_config
 from src.utils.io import load_pickle, save_csv
 from src.utils.logging_config import get_logger, setup_logging
+
+logger = get_logger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,6 +57,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the vectorized group-stage engine (slower; debugging only).",
     )
+    parser.add_argument(
+        "--bracket-csv",
+        type=str,
+        default="data/raw/manual/wc2026_knockout_bracket.csv",
+        help=(
+            "Path to the manual knockout-bracket CSV. Used in knockout-only mode "
+            "(once the group stage is over)."
+        ),
+    )
+    parser.add_argument(
+        "--knockout-only",
+        action="store_true",
+        help=(
+            "Force knockout-only mode: seed the real round-of-32 from --bracket-csv "
+            "and simulate only the knockout (no group re-simulation). Auto-enabled "
+            "when there are no unplayed group-stage fixtures left."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -73,12 +95,109 @@ def _select_fixtures(
         mask_unplayed = df["score_a"].isna()
 
     stage_upper = df["stage"].astype(str).str.upper()
-    mask_group_stage = stage_upper.str.contains("GROUP", na=False) | (
-        df.get("group", pd.Series([""] * len(df))).astype(str).str.strip() != ""
+    # A fixture is group-stage if its stage says so, or it carries a real group
+    # label. Guard the group-label clause against NaN: ``str(NaN) == "nan"``,
+    # which is non-empty, so a naive ``!= ""`` would wrongly tag scoreless
+    # knockout rows (group is blank) as group fixtures.
+    group_label = (
+        df.get("group", pd.Series([""] * len(df), index=df.index))
+        .astype(str)
+        .str.strip()
+        .str.upper()
     )
+    has_group = ~group_label.isin(["", "NAN", "NONE"])
+    mask_group_stage = stage_upper.str.contains("GROUP", na=False) | has_group
 
     fixtures = df[mask_year & mask_comp & mask_unplayed & mask_group_stage].copy()
     return fixtures
+
+
+def _bracket_advancers(bracket_csv: str | Path) -> dict[frozenset, str]:
+    """Infer each tie's advancer from the next round it feeds into.
+
+    The bracket CSV carries the tournament tree (``feeds_winner_into`` links each
+    tie to the next-round match it feeds). Once the user fills that next-round
+    match with the team that advanced, the winner of the feeding tie is simply
+    whichever of its two teams appears there. This recovers the winner of a
+    **penalty-decided (drawn) tie**, whose score (e.g. 1-1) does not reveal it.
+
+    Returns a map ``frozenset({team_a, team_b}) -> advancer`` for every tie whose
+    advancer can be read off the (filled) next-round match.
+    """
+    path = Path(bracket_csv)
+    if not path.exists():
+        return {}
+    bracket = pd.read_csv(path)
+    required = {"match_id", "feeds_winner_into", "team_a", "team_b"}
+    if not required.issubset(bracket.columns):
+        return {}
+
+    def _val(x: object) -> str | None:
+        return None if pd.isna(x) or str(x).strip() == "" else str(x).strip()
+
+    teams_by_id: dict[str, set[str]] = {}
+    for r in bracket.itertuples():
+        mid = _val(r.match_id)
+        if mid is not None:
+            teams_by_id[mid] = {t for t in (_val(r.team_a), _val(r.team_b)) if t is not None}
+
+    advancers: dict[frozenset, str] = {}
+    for r in bracket.itertuples():
+        a, b, target = _val(r.team_a), _val(r.team_b), _val(r.feeds_winner_into)
+        if a is None or b is None or target is None:
+            continue
+        advanced = {a, b} & teams_by_id.get(target, set())
+        if len(advanced) == 1:  # exactly one of the two appears in the next round
+            advancers[frozenset({a, b})] = next(iter(advanced))
+    return advancers
+
+
+def _played_knockout_winners(
+    tournament_year: int, bracket_csv: str | Path | None = None
+) -> dict[frozenset, str]:
+    """Map already-played knockout ties to their winner.
+
+    Lets the knockout-only simulation condition on real results: a decided tie
+    always advances its actual winner instead of being re-simulated. A **drawn**
+    tie's winner is not in the score (penalty shootout), so it is recovered from
+    the bracket's next-round fill via :func:`_bracket_advancers` when
+    *bracket_csv* is given; ties whose next round is not yet filled are left to
+    the simulation.
+    """
+    df = DataLoader().load_matches()
+    if df.empty or "score_a" not in df.columns:
+        return {}
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    stage = df["stage"].astype(str).str.upper()
+    mask_ko = stage.str.contains("ROUND|QUARTER|SEMI|FINAL|R16|R32|KNOCKOUT|THIRD", na=False)
+    played = df[(df["date"].dt.year == tournament_year) & mask_ko].copy()
+
+    winners: dict[frozenset, str] = {}
+    drawn: list[frozenset] = []
+    for r in played.itertuples():
+        sa = pd.to_numeric(r.score_a, errors="coerce")
+        sb = pd.to_numeric(r.score_b, errors="coerce")
+        if pd.isna(sa) or pd.isna(sb):
+            continue  # unplayed or malformed
+        key = frozenset({str(r.team_a), str(r.team_b)})
+        if sa == sb:
+            drawn.append(key)  # penalty shootout — winner not in the score
+        else:
+            winners[key] = str(r.team_a) if sa > sb else str(r.team_b)
+
+    if drawn and bracket_csv is not None:
+        advancers = _bracket_advancers(bracket_csv)
+        for key in drawn:
+            if key not in winners and key in advancers:
+                winners[key] = advancers[key]
+                logger.info(
+                    "Drawn knockout tie %s decided on penalties; advancer %s inferred "
+                    "from the bracket's next round",
+                    set(key),
+                    advancers[key],
+                )
+    return winners
 
 
 def _normalize_group_column(fixtures: pd.DataFrame) -> pd.DataFrame:
@@ -125,39 +244,57 @@ def main() -> int:
         logger.error("Feature matrix is empty; aborting")
         return 1
 
-    fixtures = _select_fixtures(feature_matrix, tournament_year, args.competition)
-    if fixtures.empty:
-        logger.error(
-            "No upcoming %s %d group-stage fixtures found in the canonical table. "
-            "Run: python scripts/bootstrap_historical_data.py --competitions %s "
-            "--start-year %d --end-year %d --no-kaggle",
-            args.competition,
-            tournament_year,
-            args.competition,
-            tournament_year,
-            tournament_year,
+    group_fixtures = _select_fixtures(feature_matrix, tournament_year, args.competition)
+
+    # Decide the mode. While groups still have unplayed matches we simulate the
+    # whole tournament from scratch (the pre-/early-tournament use case). Once
+    # every group is decided there are no unplayed group fixtures, so we seed the
+    # *real* round-of-32 from the manual bracket and simulate only the knockout —
+    # otherwise the group re-simulation silently drops the already-decided teams.
+    knockout_only = args.knockout_only or group_fixtures.empty
+    bracket: list[BracketPair] = []
+
+    if knockout_only:
+        try:
+            bracket = load_known_round_of_32(args.bracket_csv)
+        except (FileNotFoundError, ValueError) as exc:
+            logger.error("Knockout-only mode requested but the bracket is not ready: %s", exc)
+            return 1
+        teams = sorted({t for p in bracket for t in (p.team_a, p.team_b)})
+        known_winners = _played_knockout_winners(tournament_year, bracket_csv=args.bracket_csv)
+        logger.info(
+            "Knockout-only mode: seeded the real round-of-32 (%d ties, %d teams) from %s; "
+            "%d already-played tie(s) fixed to their actual winner",
+            len(bracket),
+            len(teams),
+            args.bracket_csv,
+            len(known_winners),
         )
-        return 1
-
-    fixtures = _normalize_group_column(fixtures)
-    n_groups = fixtures["group"].nunique()
-    logger.info(
-        "Selected %d group-stage fixtures across %d groups (%s %d)",
-        len(fixtures),
-        n_groups,
-        args.competition,
-        tournament_year,
-    )
-    logger.info("Group distribution: %s", fixtures["group"].value_counts().to_dict())
-
-    if n_groups < 2:
-        logger.error(
-            "Only %d distinct group(s) detected; cannot run a meaningful simulation. "
-            "Ensure the football-data.org payload included the 'group' field, or "
-            "provide a manual fixture CSV with groups A..L populated.",
+    else:
+        group_fixtures = _normalize_group_column(group_fixtures)
+        n_groups = group_fixtures["group"].nunique()
+        logger.info(
+            "Selected %d group-stage fixtures across %d groups (%s %d)",
+            len(group_fixtures),
             n_groups,
+            args.competition,
+            tournament_year,
         )
-        return 1
+        logger.info(
+            "Group distribution: %s", group_fixtures["group"].value_counts().to_dict()
+        )
+
+        if n_groups < 2:
+            logger.error(
+                "Only %d distinct group(s) detected; cannot run a meaningful simulation. "
+                "Ensure the football-data.org payload included the 'group' field, or "
+                "provide a manual fixture CSV with groups A..L populated.",
+                n_groups,
+            )
+            return 1
+        teams = sorted(
+            {str(t) for t in pd.concat([group_fixtures["team_a"], group_fixtures["team_b"]]).dropna()}
+        )
 
     models_dir = Path("models")
     try:
@@ -207,7 +344,6 @@ def main() -> int:
     # Score every possible knockout pairing with the FULL feature-based model
     # (squad value + engineered features), not just ratings + Poisson. We build a
     # feature row per ordered pair once and look it up in the hot loop.
-    teams = sorted({str(t) for t in pd.concat([fixtures["team_a"], fixtures["team_b"]]).dropna()})
     pair_proba: dict[tuple[str, str], np.ndarray] = {}
     pair_features = build_pairwise_feature_matrix(teams, tournament_year=tournament_year)
     if not pair_features.empty:
@@ -228,14 +364,30 @@ def main() -> int:
         pred = predictor.predict_single(a, b)
         return np.array([pred.p_home, pred.p_draw, pred.p_away])
 
-    simulator = TournamentSimulator(
-        fixtures=fixtures,
-        predict_fn=_predict_pair,
-        cache_predictions=not args.no_cache,
-        vectorized_group_stage=not args.no_vectorized,
-    )
-    logger.info("Running %d tournament simulations", n_runs)
-    summary = simulator.run(n_runs=n_runs)
+    if knockout_only:
+        sim_fixtures = pd.DataFrame(
+            {
+                "team_a": [p.team_a for p in bracket],
+                "team_b": [p.team_b for p in bracket],
+            }
+        )
+        simulator = TournamentSimulator(
+            fixtures=sim_fixtures,
+            predict_fn=_predict_pair,
+            cache_predictions=not args.no_cache,
+            vectorized_group_stage=False,
+        )
+        logger.info("Running %d knockout-only simulations", n_runs)
+        summary = simulator.run_from_known_bracket(bracket, n_runs=n_runs, known_winners=known_winners)
+    else:
+        simulator = TournamentSimulator(
+            fixtures=group_fixtures,
+            predict_fn=_predict_pair,
+            cache_predictions=not args.no_cache,
+            vectorized_group_stage=not args.no_vectorized,
+        )
+        logger.info("Running %d tournament simulations", n_runs)
+        summary = simulator.run(n_runs=n_runs)
 
     save_csv(summary.qualification_probs, "outputs/simulations/tournament_probabilities.csv")
     save_csv(summary.bracket_paths, "outputs/simulations/bracket_paths.csv")

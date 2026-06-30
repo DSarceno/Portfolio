@@ -701,7 +701,9 @@ winner = a si rng.uniform() < win_prob_a, sino b
 
 El supuesto operacional: en caso de empate (que en fase eliminatoria iría a tiempos extras y eventualmente penaltis), la ganadora se decide proporcionalmente a la fuerza relativa estimada por el modelo, distribuyendo el peso del empate entre las dos partes.
 
-> *Limitación conocida (documentada en README):* "Penalty shootouts are modeled as Bernoulli draws around a knockout-volatility prior". Una mejora natural sería incorporar tasas de conversión históricas de penaltis por selección.
+**Cruces ya jugados (condicionamiento).** El proxy Bernoulli aplica solo a cruces *aún no jugados*. Para un cruce ya disputado, `_played_knockout_winners` fuerza el ganador real vía `known_winners` en lugar de re-simularlo. Si el partido terminó en empate y se definió por penaltis, el marcador (p. ej. 1-1) no revela al ganador, así que `_bracket_advancers` ([`scripts/simulate_tournament.py`](scripts/simulate_tournament.py)) lo **infiere del bracket**: el equipo que avanzó es el que aparece en el cruce de la ronda siguiente (vía `feeds_winner_into`) una vez que se llena. Así las probabilidades de campeón condicionan en el resultado real de los penaltis, no en una nueva moneda al aire.
+
+> *Limitación conocida (documentada en README):* "Penalty shootouts are modeled as Bernoulli draws around a knockout-volatility prior" — aplica a los tiroteos *simulados* (cruces futuros). Una mejora natural sería incorporar tasas de conversión históricas de penaltis por selección.
 
 ### 7.9. Pre-cache de predicciones
 

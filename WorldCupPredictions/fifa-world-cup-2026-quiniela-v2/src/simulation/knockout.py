@@ -41,6 +41,7 @@ def _decide_match(
     predict_fn: Callable[[str, str], np.ndarray],
     rng: np.random.Generator,
     stage: str,
+    known_winners: dict[frozenset[str], str] | None = None,
 ) -> KnockoutLogEntry:
     """Simulate one knockout match (with penalty proxy if needed).
 
@@ -50,10 +51,25 @@ def _decide_match(
         predict_fn: Callable returning ``[p_home, p_draw, p_away]``.
         rng: Random generator.
         stage: Stage label (for logging).
+        known_winners: Optional map ``frozenset({team_a, team_b}) -> winner``
+            for ties that have **already been played**. When the pair is known,
+            the result is forced deterministically instead of simulated, so the
+            Monte-Carlo conditions on what has actually happened.
 
     Returns:
         :class:`KnockoutLogEntry`.
     """
+    if known_winners:
+        forced = known_winners.get(frozenset({team_a, team_b}))
+        if forced is not None:
+            return KnockoutLogEntry(
+                stage=stage,
+                team_a=team_a,
+                team_b=team_b,
+                winner=forced,
+                via_penalties=False,
+            )
+
     probs = predict_fn(team_a, team_b)
     probs = probs / probs.sum()
     p_home, p_draw, p_away = probs.tolist()
@@ -73,6 +89,7 @@ def simulate_knockout(
     bracket: list[BracketPair],
     predict_fn: Callable[[str, str], np.ndarray],
     rng: np.random.Generator | None = None,
+    known_winners: dict[frozenset[str], str] | None = None,
 ) -> KnockoutResult:
     """Run the full knockout stage.
 
@@ -80,6 +97,9 @@ def simulate_knockout(
         bracket: Round-of-32 pairings.
         predict_fn: Callable returning ``[p_home, p_draw, p_away]``.
         rng: Optional random generator.
+        known_winners: Optional map of already-played ties to their winner; see
+            :func:`_decide_match`. Lets the simulation condition on real results
+            as the knockout progresses instead of re-simulating decided ties.
 
     Returns:
         :class:`KnockoutResult`.
@@ -117,7 +137,7 @@ def simulate_knockout(
         next_round: list[str] = []
         round_pairs = [(current[i], current[i + 1]) for i in range(0, len(current), 2)]
         for a, b in round_pairs:
-            entry = _decide_match(a, b, predict_fn, rng, stage)
+            entry = _decide_match(a, b, predict_fn, rng, stage, known_winners)
             log.append(entry)
             next_round.append(entry.winner)
             if stage == "sf":
@@ -133,7 +153,7 @@ def simulate_knockout(
     runner_up = ""
     champion = current[0] if current else ""
     if len(current) >= 2:
-        final_entry = _decide_match(current[0], current[1], predict_fn, rng, "final")
+        final_entry = _decide_match(current[0], current[1], predict_fn, rng, "final", known_winners)
         log.append(final_entry)
         champion = final_entry.winner
         runner_up = current[1] if final_entry.winner == current[0] else current[0]
@@ -143,7 +163,7 @@ def simulate_knockout(
     third_place = ""
     if len(semifinal_losers) >= 2:
         third_entry = _decide_match(
-            semifinal_losers[0], semifinal_losers[1], predict_fn, rng, "third_place"
+            semifinal_losers[0], semifinal_losers[1], predict_fn, rng, "third_place", known_winners
         )
         log.append(third_entry)
         third_place = third_entry.winner

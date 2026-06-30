@@ -27,6 +27,18 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Optional CSV path with new matches in canonical schema",
     )
+    parser.add_argument(
+        "--append-only",
+        action="store_true",
+        help=(
+            "Disable the default 'purge + re-ingest' for --manual-csv. By default "
+            "the manual CSV is treated as the authoritative record: all existing "
+            "manual ('tournament_update') rows are replaced by the CSV, so edits "
+            "(fixed dates/teams) propagate and no orphan rows survive. Use this "
+            "flag to only upsert the CSV rows without purging (e.g. ingesting a "
+            "partial CSV)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -37,9 +49,16 @@ def main() -> int:
     args = parse_args()
 
     new_matches = pd.DataFrame(columns=CANONICAL_COLUMNS)
+    replace_source = False
     if args.manual_csv:
         new_matches = pd.read_csv(args.manual_csv)
-        logger.info("Loaded %d matches from manual CSV %s", len(new_matches), args.manual_csv)
+        replace_source = not args.append_only
+        logger.info(
+            "Loaded %d matches from manual CSV %s (mode=%s)",
+            len(new_matches),
+            args.manual_csv,
+            "append-only" if args.append_only else "replace (purge + re-ingest)",
+        )
     elif args.date:
         logger.info("Attempting to fetch matches for %s from football-data.org", args.date)
         df = FootballDataClient().fetch_matches("WC", date_from=args.date, date_to=args.date)
@@ -62,7 +81,7 @@ def main() -> int:
             )
 
     updater = DailyUpdater()
-    result = updater.update(new_matches=new_matches)
+    result = updater.update(new_matches=new_matches, replace_source=replace_source)
     logger.info("Update complete: %s", result)
     return 0
 

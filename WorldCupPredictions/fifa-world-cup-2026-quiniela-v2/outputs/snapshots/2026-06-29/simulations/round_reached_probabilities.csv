@@ -1,0 +1,187 @@
+team,stage,prob
+Algeria,champion,0.0109
+Algeria,final,0.019
+Algeria,qf,0.137
+Algeria,r16,0.2186
+Algeria,r32,0.5675
+Algeria,sf,0.047
+Argentina,champion,0.1658
+Argentina,final,0.1123
+Argentina,qf,0.1734
+Argentina,r16,0.206
+Argentina,r32,0.1742
+Argentina,sf,0.1683
+Australia,champion,0.0127
+Australia,final,0.0217
+Australia,qf,0.0952
+Australia,r16,0.3737
+Australia,r32,0.4467
+Australia,sf,0.05
+Austria,champion,0.0063
+Austria,final,0.0126
+Austria,qf,0.0534
+Austria,r16,0.1761
+Austria,r32,0.7189
+Austria,sf,0.0327
+Belgium,champion,0.0367
+Belgium,final,0.047
+Belgium,qf,0.2162
+Belgium,r16,0.1923
+Belgium,r32,0.4048
+Belgium,sf,0.103
+Bosnia-Herzegovina,champion,0.0007
+Bosnia-Herzegovina,final,0.0016
+Bosnia-Herzegovina,qf,0.0597
+Bosnia-Herzegovina,r16,0.1797
+Bosnia-Herzegovina,r32,0.7462
+Bosnia-Herzegovina,sf,0.0121
+Brazil,champion,0.0559
+Brazil,final,0.0426
+Brazil,qf,0.1667
+Brazil,r16,0.1652
+Brazil,r32,0.4767
+Brazil,sf,0.0929
+Canada,champion,0.0157
+Canada,final,0.0293
+Canada,qf,0.2386
+Canada,r16,0.64
+Canada,sf,0.0764
+Cape Verde Islands,champion,0.0007
+Cape Verde Islands,final,0.0025
+Cape Verde Islands,qf,0.0358
+Cape Verde Islands,r16,0.1228
+Cape Verde Islands,r32,0.8258
+Cape Verde Islands,sf,0.0124
+Colombia,champion,0.0339
+Colombia,final,0.0501
+Colombia,qf,0.224
+Colombia,r16,0.3208
+Colombia,r32,0.2857
+Colombia,sf,0.0855
+Congo DR,champion,0.0012
+Congo DR,final,0.002
+Congo DR,qf,0.0343
+Congo DR,r16,0.144
+Congo DR,r32,0.8109
+Congo DR,sf,0.0076
+Croatia,champion,0.0115
+Croatia,final,0.0152
+Croatia,qf,0.0771
+Croatia,r16,0.2297
+Croatia,r32,0.6244
+Croatia,sf,0.0421
+Ecuador,champion,0.0086
+Ecuador,final,0.0171
+Ecuador,qf,0.12
+Ecuador,r16,0.2435
+Ecuador,r32,0.5675
+Ecuador,sf,0.0433
+Egypt,champion,0.0074
+Egypt,final,0.0155
+Egypt,qf,0.0808
+Egypt,r16,0.2975
+Egypt,r32,0.5533
+Egypt,sf,0.0455
+England,champion,0.0922
+England,final,0.0757
+England,qf,0.2069
+England,r16,0.3144
+England,r32,0.1891
+England,sf,0.1217
+France,champion,0.1403
+France,final,0.0915
+France,qf,0.1612
+France,r16,0.2513
+France,r32,0.2215
+France,sf,0.1342
+Germany,champion,0.0376
+Germany,final,0.045
+Germany,qf,0.1401
+Germany,r16,0.4204
+Germany,r32,0.2745
+Germany,sf,0.0824
+Ghana,champion,0.0023
+Ghana,final,0.0047
+Ghana,qf,0.0649
+Ghana,r16,0.1948
+Ghana,r32,0.7143
+Ghana,sf,0.019
+Ivory Coast,champion,0.0118
+Ivory Coast,final,0.021
+Ivory Coast,qf,0.0821
+Ivory Coast,r16,0.3368
+Ivory Coast,r32,0.506
+Ivory Coast,sf,0.0423
+Japan,champion,0.033
+Japan,final,0.0382
+Japan,qf,0.1524
+Japan,r16,0.176
+Japan,r32,0.5233
+Japan,sf,0.0771
+Mexico,champion,0.0283
+Mexico,final,0.0327
+Mexico,qf,0.1413
+Mexico,r16,0.2981
+Mexico,r32,0.4325
+Mexico,sf,0.0671
+Morocco,champion,0.0303
+Morocco,final,0.0296
+Morocco,qf,0.156
+Morocco,r16,0.1594
+Morocco,r32,0.5728
+Morocco,sf,0.0519
+Netherlands,champion,0.0446
+Netherlands,final,0.0457
+Netherlands,qf,0.2029
+Netherlands,r16,0.2006
+Netherlands,r32,0.4272
+Netherlands,sf,0.079
+Norway,champion,0.0143
+Norway,final,0.0235
+Norway,qf,0.0963
+Norway,r16,0.322
+Norway,r32,0.494
+Norway,sf,0.0499
+Paraguay,champion,0.0046
+Paraguay,final,0.009
+Paraguay,qf,0.0554
+Paraguay,r16,0.1834
+Paraguay,r32,0.7255
+Paraguay,sf,0.0221
+Portugal,champion,0.042
+Portugal,final,0.0426
+Portugal,qf,0.1125
+Portugal,r16,0.332
+Portugal,r32,0.3756
+Portugal,sf,0.0953
+Senegal,champion,0.0109
+Senegal,final,0.0192
+Senegal,qf,0.1291
+Senegal,r16,0.1981
+Senegal,r32,0.5952
+Senegal,sf,0.0475
+South Africa,r32,1.0
+Spain,champion,0.1066
+Spain,final,0.0757
+Spain,qf,0.1392
+Spain,r16,0.2622
+Spain,r32,0.2811
+Spain,sf,0.1352
+Sweden,champion,0.0039
+Sweden,final,0.007
+Sweden,qf,0.0458
+Sweden,r16,0.1449
+Sweden,r32,0.7785
+Sweden,sf,0.0199
+Switzerland,champion,0.0149
+Switzerland,final,0.0275
+Switzerland,qf,0.1889
+Switzerland,r16,0.2658
+Switzerland,r32,0.4325
+Switzerland,sf,0.0704
+United States,champion,0.0144
+United States,final,0.0229
+United States,qf,0.2128
+United States,r16,0.4299
+United States,r32,0.2538
+United States,sf,0.0662

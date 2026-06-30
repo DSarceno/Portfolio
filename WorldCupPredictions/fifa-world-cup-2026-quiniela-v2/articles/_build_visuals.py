@@ -773,8 +773,120 @@ def build_carousels():
     ])
 
 
+# ============================================================ NEW: articles 06 / 07
+def build_new_equations():
+    """Equation cards for article 06 (live ops) and 07 (gradient boosting)."""
+    # --- 07 · gradient boosting ---
+    render_eq("xgb_objective.png",
+              r"$\mathrm{Obj}^{(m)}\approx\sum_i\left[g_i\,f(x_i)"
+              r"+\frac{1}{2}h_i\,f(x_i)^2\right]"
+              r"+\gamma T+\frac{1}{2}\lambda\sum_j w_j^2$", fontsize=22)
+    # Two single-line cards: stacked fractions+sums collide if rendered together.
+    render_eq("xgb_leaf.png",
+              r"$w_j^{*}=-\,\frac{G_j}{H_j+\lambda}$", fontsize=26)
+    render_eq("xgb_score.png",
+              r"$\mathrm{Obj}^{*}=-\frac{1}{2}\sum_j\frac{G_j^{2}}{H_j+\lambda}+\gamma T$",
+              fontsize=24)
+    render_eq("xgb_gain.png",
+              r"$\mathrm{Gain}=\frac{1}{2}\left[\frac{G_L^2}{H_L+\lambda}"
+              r"+\frac{G_R^2}{H_R+\lambda}"
+              r"-\frac{(G_L+G_R)^2}{H_L+H_R+\lambda}\right]-\gamma$", fontsize=19)
+    render_eq("softmax_hda.png",
+              r"$p_k(x)=\frac{e^{F_k(x)}}{\sum_{c=1}^{3} e^{F_c(x)}}$", fontsize=24)
+    # --- 06 · live ops (set-algebra of the merge) ---
+    render_eq("upsert.png",
+              r"$U(E,N)=\{\,e\in E:\ k(e)\notin k(N)\,\}\ \cup\ N$", fontsize=22)
+    render_eq("replace_source.png",
+              r"$R_s(E,N)=\{\,e\in E:\ \mathrm{source}(e)\neq s\,\}\ \cup\ N$", fontsize=22)
+
+
+def fig13_orphan_vs_replace():
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(11.6, 5.6))
+    fig.subplots_adjust(top=0.72, bottom=0.04, left=0.02, right=0.98, wspace=0.10)
+    for ax in (axL, axR):
+        ax.axis("off"); ax.set_xlim(0, 10); ax.set_ylim(0, 10)
+
+    def box(ax, x, y, w, h, label, color, sub=None, fc=NAVY2):
+        ax.add_patch(mpatches.FancyBboxPatch((x, y), w, h,
+                     boxstyle="round,pad=0.02,rounding_size=0.10", fc=fc, ec=color, lw=2))
+        ax.text(x + w / 2, y + h / 2 + (0.32 if sub else 0), label, ha="center",
+                va="center", color=TEXT, fontsize=9.6, fontweight="bold")
+        if sub:
+            ax.text(x + w / 2, y + h / 2 - 0.42, sub, ha="center", va="center",
+                    color=MUTED, fontsize=8.2)
+
+    def arrow(ax, x0, y0, x1, y1, c=MUTED):
+        ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
+                    arrowprops=dict(arrowstyle="-|>", color=c, lw=1.8))
+
+    # LEFT: upsert by key -> orphan
+    axL.set_title("Upsert by key  (date, team_a, team_b)", color=RED, fontsize=12, pad=10)
+    box(axL, 2.0, 8.2, 6.0, 1.3, "row with WRONG key  k", RED, "ingested earlier")
+    arrow(axL, 5.0, 8.2, 5.0, 7.2)
+    box(axL, 2.0, 5.9, 6.0, 1.3, "edit CSV → new key  k'", GOLD, "you fix the date / spelling")
+    arrow(axL, 5.0, 5.9, 5.0, 4.9)
+    box(axL, 0.4, 3.4, 4.4, 1.3, "corrected row  k'", GREEN, "added (in N)")
+    box(axL, 5.2, 3.4, 4.4, 1.3, "old row  k", RED, "ORPHAN — survives")
+    axL.text(5.0, 1.9, "k ∉ k(N) → upsert can't delete it", ha="center", color=RED,
+             fontsize=10, fontweight="bold")
+    axL.text(5.0, 1.1, "team double-counted", ha="center", color=MUTED, fontsize=9,
+             style="italic")
+
+    # RIGHT: replace by source -> clean
+    axR.set_title("Replace by source partition", color=GREEN, fontsize=12, pad=10)
+    box(axR, 2.0, 8.2, 6.0, 1.3, "purge all rows  source = s", BLUE, "drop the whole partition")
+    arrow(axR, 5.0, 8.2, 5.0, 7.2)
+    box(axR, 2.0, 5.9, 6.0, 1.3, "re-ingest  N", GOLD, "authoritative CSV")
+    arrow(axR, 5.0, 5.9, 5.0, 4.9)
+    box(axR, 2.0, 3.4, 6.0, 1.3, "table slice (s) = N  exactly", GREEN, "no survivors", fc=PANEL)
+    axR.text(5.0, 1.9, "idempotent AND orphan-free", ha="center", color=GREEN,
+             fontsize=10, fontweight="bold")
+    axR.text(5.0, 1.1, "re-running always converges", ha="center", color=MUTED, fontsize=9,
+             style="italic")
+
+    _accent_title(fig, "An edited key orphans a row; replacing a partition does not",
+                  "Upsert can only overwrite keys it still sees — purge-by-source is orphan-free by construction")
+    _brand(fig)
+    save(fig, "fig13_orphan_vs_replace.png")
+
+
+def fig14_blend_weights():
+    models = ["ratings\n(Elo / PI / form)", "XGBoost", "multinomial\nlogit", "Poisson /\nSkellam"]
+    weights = [0.35, 0.30, 0.20, 0.15]
+    colors = [GREEN, GOLD, BLUE, PURPLE]
+    order = np.argsort(weights)  # ascending for barh
+    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
+    fig.subplots_adjust(top=0.78, bottom=0.12, left=0.22, right=0.93)
+    y = np.arange(len(models))
+    ax.barh(y, [weights[i] for i in order], color=[colors[i] for i in order],
+            edgecolor=NAVY, height=0.62)
+    ax.set_yticks(y); ax.set_yticklabels([models[i] for i in order], fontsize=10)
+    for yi, i in enumerate(order):
+        ax.text(weights[i] + 0.006, yi, f"{weights[i]:.2f}", va="center", color=TEXT,
+                fontsize=11, fontweight="bold")
+    ax.set_xlim(0, 0.42); ax.set_xlabel("Blend weight in the final H/D/A probability")
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.text(0.30, len(models) - 0.5, "XGBoost: primary ML classifier,\nbut capped at 0.30",
+            color=GOLD, fontsize=9.5, ha="left", va="center", style="italic")
+    _accent_title(fig, "XGBoost is one regularized voice, not the model",
+                  "The weighted blend caps any single mis-specified view; calibrated and backtested end-to-end")
+    _brand(fig)
+    save(fig, "fig14_blend_weights.png")
+
+
+def build_new_heroes():
+    hero("hero06.png", "PRODUCTION DATA ENGINEERING",
+         "Operating a Model\nAgainst a Live Event",
+         "Idempotency, keyed merges, and a timezone that quietly forged matches", BLUE)
+    hero("hero07.png", "MACHINE LEARNING THEORY",
+         "Gradient Boosting on a\nSmall-Data Problem",
+         "The functional-gradient math of XGBoost — and why it earns only a 0.30 vote", GOLD)
+
+
 if __name__ == "__main__":
     build_equations()
+    build_new_equations()
     fig1_skellam_vs_grid()
     fig2_time_decay()
     fig3_shrinkage()
@@ -787,6 +899,9 @@ if __name__ == "__main__":
     fig10_champion_reshuffle()
     fig11_one_forecast_four_policies()
     fig12_parimutuel()
+    fig13_orphan_vs_replace()
+    fig14_blend_weights()
     build_heroes()
+    build_new_heroes()
     build_carousels()
     print("\nDONE.")

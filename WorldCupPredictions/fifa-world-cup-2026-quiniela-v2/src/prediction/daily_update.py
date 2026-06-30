@@ -49,17 +49,24 @@ class DailyUpdater:
         self.outputs_dir = ensure_dir(outputs_dir)
         self.tournament_year = tournament_year
 
-    def update(self, new_matches: Optional[pd.DataFrame] = None) -> DailyUpdateResult:
+    def update(
+        self, new_matches: Optional[pd.DataFrame] = None, replace_source: bool = False
+    ) -> DailyUpdateResult:
         """Append new matches (if any), refit ratings and persist a state snapshot.
 
         Args:
             new_matches: Optional DataFrame with matches to append.
+            replace_source: Forwarded to
+                :meth:`TournamentUpdater.append_results`. When ``True`` the
+                ingest runs in idempotent "purge + re-ingest" mode, so the
+                canonical table mirrors *new_matches* exactly and orphan rows
+                from previously edited entries are removed.
 
         Returns:
             :class:`DailyUpdateResult`.
         """
         if new_matches is not None and not new_matches.empty:
-            summary = self.updater.append_results(new_matches)
+            summary = self.updater.append_results(new_matches, replace_source=replace_source)
             matches_appended = summary.matches_appended
         else:
             matches_appended = 0
@@ -67,7 +74,9 @@ class DailyUpdater:
         matches = self.loader.load_matches()
         ensemble = RatingEnsemble().fit(matches)
         composite = ensemble.composite_table()
-        composite_path = save_csv(composite, self.outputs_dir / "diagnostics" / "composite_ratings.csv")
+        composite_path = save_csv(
+            composite, self.outputs_dir / "diagnostics" / "composite_ratings.csv"
+        )
 
         state = self.updater.world_cup_state(self.tournament_year)
         state_path = save_csv(state, self.outputs_dir / "diagnostics" / "tournament_state.csv")

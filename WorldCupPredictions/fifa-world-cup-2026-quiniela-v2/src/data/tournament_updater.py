@@ -47,13 +47,25 @@ class TournamentUpdater:
         self.interim_dir = ensure_dir(interim_dir)
 
     def append_results(
-        self, new_matches: pd.DataFrame, source: str = "tournament_update"
+        self,
+        new_matches: pd.DataFrame,
+        source: str = "tournament_update",
+        replace_source: bool = False,
     ) -> UpdateSummary:
         """Append *new_matches* to the canonical match table.
 
         Args:
             new_matches: DataFrame with the canonical columns plus required keys.
             source: Tag stored in the ``source`` column.
+            replace_source: When ``True``, drop every existing row tagged with
+                *source* before appending, so the canonical table mirrors
+                *new_matches* exactly for that source. This is the idempotent
+                "purge + re-ingest" mode: it removes orphan rows left behind
+                when a previously ingested row's date/teams were later edited
+                (the ``(date, team_a, team_b)`` dedup key changes, so a plain
+                append would never overwrite the stale row). When ``False``
+                (default) the call is a pure upsert and pre-existing rows are
+                preserved.
 
         Returns:
             An :class:`UpdateSummary` describing the operation.
@@ -72,6 +84,11 @@ class TournamentUpdater:
         save_csv(prepared[CANONICAL_COLUMNS], snapshot_file)
 
         existing = self.loader.load_matches()
+        if replace_source and "source" in existing.columns:
+            purged = int((existing["source"] == source).sum())
+            if purged:
+                existing = existing[existing["source"] != source].copy()
+                logger.info("replace_source=True: purged %d existing '%s' row(s)", purged, source)
         combined = pd.concat([existing, prepared[CANONICAL_COLUMNS]], ignore_index=True)
         combined["date"] = pd.to_datetime(combined["date"], errors="coerce")
         combined = combined.drop_duplicates(subset=["date", "team_a", "team_b"], keep="last")
@@ -79,7 +96,9 @@ class TournamentUpdater:
         save_csv(combined, self.interim_dir / "matches_unified.csv")
 
         appended = int(len(combined) - len(existing))
-        logger.info("Appended %d match(es); canonical table now has %d rows", appended, len(combined))
+        logger.info(
+            "Appended %d match(es); canonical table now has %d rows", appended, len(combined)
+        )
         return UpdateSummary(
             matches_appended=appended,
             matches_total=int(len(combined)),

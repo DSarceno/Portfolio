@@ -64,6 +64,12 @@ outputs/simulations/*.csv
 outputs/picks/*.csv
 outputs/diagnostics/*.csv
 
+# Dated forecast snapshots ARE committed on purpose: they preserve each
+# matchday's forecast (the live outputs above are overwritten every run) and
+# feed the pre-tournament-vs-actual comparison. See scripts/snapshot_outputs.py.
+!outputs/snapshots/
+!outputs/snapshots/**
+
 # Logs
 logs/**/*.log
 logs/**/*.txt

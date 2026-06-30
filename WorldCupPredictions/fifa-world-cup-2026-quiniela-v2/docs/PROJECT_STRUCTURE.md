@@ -16,8 +16,8 @@ fifa-world-cup-2026-quiniela-v2/
 ├── tests/
 │   ├── conftest.py              # Shared pytest fixtures
 │   └── unit/                    # Unit tests for every layer
-├── scripts/                     # 13 CLI entry points
-├── notebooks/                   # Portfolio analysis notebooks + shared nb_style.py
+├── scripts/                     # 15 CLI entry points (incl. ingest_knockout_bracket.py, snapshot_outputs.py)
+├── notebooks/                   # 6 portfolio notebooks (01 exploration … 04 quiniela, 04.5 quiniela deep-dive, 05 knockout bracket) + shared nb_style.py
 ├── config/                      # YAML configs (and .env example)
 ├── data/
 │   ├── raw/                     # Immutable raw snapshots (incl. squad_values/)
@@ -28,7 +28,8 @@ fifa-world-cup-2026-quiniela-v2/
 │   ├── predictions/             # Per-match probabilities + scorelines
 │   ├── simulations/             # Aggregated tournament probabilities
 │   ├── picks/                   # Quiniela pick sheets per profile
-│   └── diagnostics/             # Calibration, feature importance, ratings
+│   ├── diagnostics/             # Calibration, feature importance, ratings
+│   └── snapshots/               # Dated forecast archives (committed; per matchday)
 ├── logs/
 │   ├── pipeline/                # ETL + feature build logs
 │   ├── training/                # Training logs
@@ -42,6 +43,7 @@ fifa-world-cup-2026-quiniela-v2/
 ├── docs/                        # Documentation set (this folder)
 ├── run_all.bat                  # Full pipeline (Windows)
 ├── update_matchday.bat          # Quick matchday refresh (Windows)
+├── fixture_date.bat             # Look up a fixture's UTC date by team; `fixture_date.bat knockout` lists the bracket (Windows)
 ├── Makefile                     # CLI shortcuts
 ├── requirements.txt             # Python dependencies
 ├── setup.py / pyproject.toml    # Packaging

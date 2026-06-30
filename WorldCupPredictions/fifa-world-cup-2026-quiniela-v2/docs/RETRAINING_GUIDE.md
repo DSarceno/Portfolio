@@ -1,5 +1,18 @@
 # Retraining Guide
 
+> **Do NOT retrain during the tournament.** The models are trained and validated
+> pre-tournament and then **frozen**; the matchday loop (`update_matchday.bat`) updates
+> ratings and predictions but does not run `run_pipeline.py` / `train_models.py`.
+> Refitting on a trickle of in-tournament games in the **matchday loop** is unnecessary and
+> destabilising — a mid-tournament retrain once drove the **multinomial** model degenerate (~99% away
+> for every fixture; root cause was a `stage_*` train/serve skew, now **fixed in code** — the model
+> drops near-constant features and clips standardized values, see `docs/AUDIT_2026-06-29.md` §2). So
+> `update_matchday.bat` never retrains. **A deliberate, backtest-gated re-tune *is* sanctioned**, and
+> one was performed on 2026-06-29 (this guide's flow): it redeployed the fixed multinomial, restored its
+> blend weight to **0.20**, and switched calibration to **sigmoid**. Always back up `models/` first
+> (`models_backup_<ts>/`), gate every change on the backtest (§5b), and re-decide the multinomial weight
+> from a holdout weight grid.
+
 ## 1. Refresh raw data
 
 ```bash

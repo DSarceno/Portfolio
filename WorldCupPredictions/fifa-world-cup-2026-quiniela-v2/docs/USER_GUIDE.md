@@ -71,9 +71,12 @@ make api            # Launch FastAPI on http://localhost:8000
 
 ## 6. Updating after matchdays
 
-**One-shot (Windows):** `update_matchday.bat` ingests recent results and
-regenerates ratings → features → models → predictions → scorelines → picks →
-simulation in one go (it does *not* rebuild the static squad-value snapshots):
+**One-shot (Windows):** `update_matchday.bat` ingests recent results + the knockout
+bracket and regenerates ratings → predictions (group + knockout) → scorelines → picks →
+simulation in one go, then archives a **dated snapshot** of `outputs/` to
+`outputs/snapshots/<date>/`. It does *not* rebuild the static squad-value snapshots, and it does
+*not* retrain the models — those are trained pre-tournament and **frozen** for the duration
+(retraining mid-tournament is unnecessary and was shown to destabilise the blend):
 
 ```bat
 update_matchday.bat                       REM default: data\raw\manual\wc2026_results.csv
@@ -82,16 +85,50 @@ update_matchday.bat 2026-06-15            REM pull results for a date from footb
 ```
 
 Add one row per played match to `data/raw/manual/wc2026_results.csv` (canonical
-schema: `date,competition,stage,group,team_a,team_b,score_a,score_b,neutral_venue`);
-`team_a`/`team_b`/`date` must match the scheduled fixture so the result replaces
-it instead of duplicating. Close any open `outputs/*.csv` (Excel locks them).
+schema: `date,competition,stage,group,team_a,team_b,score_a,score_b,neutral_venue`).
+Close any open `outputs/*.csv` (Excel locks them).
+
+**The manual CSV is the source of truth.** The `--manual-csv` ingest runs in
+**replace mode** (purge + re-ingest) by default: every existing `tournament_update`
+row is replaced by the CSV on each run. So you just edit the CSV freely — add rows,
+fix a wrong date, correct a team name — and the canonical table is rebuilt to match
+it exactly. Edits propagate and no orphan/duplicate rows survive. (For the *why*, see
+[TROUBLESHOOTING](TROUBLESHOOTING.md): editing an already-ingested row changes the
+`(date, team_a, team_b)` dedup key, so a plain append would otherwise leave the stale
+row behind.) Use `--append-only` to upsert without purging (e.g. a partial CSV).
+
+> **Use the fixture's UTC date.** football-data.org stores kickoff dates in UTC, and
+> WC2026 is in North America, so an evening match is often the *next* calendar day in
+> UTC. If your date doesn't match the scheduled fixture's UTC date, the result lands on
+> a phantom match and the real fixture stays "upcoming". Look up the right date with
+> `fixture_date.bat <team>` (e.g. `fixture_date.bat Argentina`) before entering a result.
 
 **Manual equivalents:**
 
 ```bash
 python scripts/update_after_matchday.py --date 2026-06-15
 python scripts/update_after_matchday.py --manual-csv data/raw/manual/wc2026_results.csv
+python scripts/update_after_matchday.py --manual-csv data/raw/manual/wc2026_results.csv --append-only
 ```
+
+### Knockout phase
+
+After the group stage, keep using `update_matchday.bat` — it also handles the bracket:
+
+1. **Enter a knockout result** like any result row, but with `stage=ROUND_OF_32` (or
+   `QUARTER_FINAL` / `SEMI_FINAL` / `FINAL` / `THIRD_PLACE_FINAL`), an empty `group`, and
+   the **same date + team order** as the bracket fixture. **For a penalty shootout, record only
+   the regulation/extra-time score (the draw, e.g. `1,1`) — never add the shootout goals**, or
+   you would corrupt the ratings. The team that advanced is captured when you fill the next
+   round's matchup in the bracket (step 2): the predictor, the notebook **and the Monte-Carlo
+   simulator** all read the advancer from there (the simulator infers a drawn tie's winner from
+   the next-round fill via `feeds_winner_into`, so champion odds condition on the real shootout
+   result, not a coin flip).
+2. **Fill the next round's matchups** in `data/raw/manual/wc2026_knockout_bracket.csv`
+   (`date`, `team_a`, `team_b`) as they are decided. `update_matchday.bat` ingests them.
+   Re-running is safe — already-played ties are never overwritten.
+3. **See the bracket** any time with `fixture_date.bat knockout`. The visual bracket
+   (results + projection) lives in `notebooks/05_knockout_bracket.ipynb`.
 
 ## 7. Output reference
 
@@ -109,6 +146,7 @@ python scripts/update_after_matchday.py --manual-csv data/raw/manual/wc2026_resu
 | `outputs/simulations/bracket_paths.csv`               | Per-run champion/runner-up/third-place log |
 | `outputs/diagnostics/composite_ratings.csv`           | Composite team strength index              |
 | `outputs/diagnostics/feature_importance.csv`          | XGBoost feature importance                 |
+| `outputs/snapshots/<date>/`                           | Dated archive of the above + `manifest.json` (one per matchday) |
 
 ## 8. Common workflows
 

@@ -81,8 +81,10 @@ fifa-world-cup-2026-quiniela-v2/
 ├── reports/                 # academic/ (9 secciones + main.tex), dashboard/ (3 secciones + main.tex).
 ├── docs/                    # 11 .md de documentación + diagramas Mermaid.
 ├── docker/                  # Dockerfile + docker-compose.yml.
-├── notebooks/               # 4 notebooks de análisis (portafolio); estilo compartido en nb_style.py.
+├── notebooks/               # 6 notebooks (01-04, 04.5 quiniela deep-dive, 05 knockout bracket); estilo compartido en nb_style.py.
 ├── run_all.bat              # Pipeline completo end-to-end para Windows.
+├── update_matchday.bat      # Refresh de jornada (9 pasos, modelos congelados, snapshot datado) para Windows.
+├── fixture_date.bat         # Consulta la fecha UTC de un fixture; `fixture_date.bat knockout` lista el bracket (Windows).
 ├── Makefile                 # Targets equivalentes para Unix-likes.
 ├── pyproject.toml           # black/isort/pylint/pytest config.
 ├── requirements.txt
@@ -158,15 +160,39 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 ### Workflow diario durante el Mundial
 
 ```powershell
-python scripts/update_after_matchday.py --date 2026-06-15
+python scripts/update_after_matchday.py --manual-csv data/raw/manual/wc2026_results.csv
+python scripts/ingest_knockout_bracket.py     # ingiere el bracket; NO pisa partidos jugados
 python scripts/build_ratings.py
-python scripts/run_pipeline.py
-python scripts/train_models.py
 python scripts/predict_group_stage.py
+python scripts/predict_knockout.py
 python scripts/predict_scorelines.py
 python scripts/export_quiniela_sheet.py
 python scripts/simulate_tournament.py --n-runs 2000
+python scripts/snapshot_outputs.py            # archiva outputs/ datado en outputs/snapshots/<fecha>/
 ```
+
+> **MODELOS CONGELADOS en el loop de jornada.** `update_matchday.bat` NO corre `run_pipeline.py` ni
+> `train_models.py`; los ratings (Elo/pi/form) SÍ se actualizan cada jornada. Una corrida de retrain en
+> el loop dejó el **multinomial** degenerado (~99% al visitante en todo partido): las features `stage_*`
+> son constantes=0 en el entrenamiento histórico pero 1 al servir un partido de eliminatoria, así que el
+> `StandardScaler` las explotaba. **Arreglado (2026-06-29):** el modelo descarta features casi-constantes
+> y clipea valores estandarizados; se hizo un **re-tune deliberado gateado por backtest** que redesplegó
+> el multinomial sano, **restauró su peso a `0.20`** (blend de 4 modelos) y cambió la calibración a
+> **sigmoid** (`calibration.strategy`). El loop de jornada sigue congelado. Para reentrenar a propósito:
+> respalda `models/`, corre `run_pipeline.py` + `train_models.py`, valida con el backtest y re-decide el
+> peso del multinomial con un grid en holdout. Detalle: [[wc2026-knockout-phase-workflow]], `docs/AUDIT_2026-06-29.md`.
+
+En la práctica el usuario corre `update_matchday.bat` (los 9 pasos) y mantiene los
+resultados a mano en `data/raw/manual/wc2026_results.csv`. Ese .bat usa el path
+`--manual-csv`, que por **default corre en modo "replace" (purga + reingiere)**: el CSV
+es la fuente autoritativa de resultados manuales y toda fila `source=tournament_update`
+se reemplaza por el CSV en cada corrida. Esto borra automáticamente las **filas
+huérfanas** que deja un upsert cuando se edita la fecha/equipos de una fila ya ingerida
+(la llave `(date, team_a, team_b)` cambia y un append simple nunca sobreescribe la vieja).
+Para solo upsertar sin purgar (p.ej. un CSV parcial) usar `--append-only`. El path
+`--date` (fetch de football-data.org) sigue en modo append. **Recordatorio operativo:**
+las fechas en `wc2026_results.csv` deben ser las **UTC** que football_data asigna al
+fixture (usar `fixture_date.bat <equipo>` para consultarlas), o se crean partidos fantasma.
 
 ---
 
@@ -232,6 +258,8 @@ python scripts/simulate_tournament.py --n-runs 2000
 | `scripts/simulate_tournament.py::_select_fixtures` | Filtra estrictamente por `competition=WC ∧ year=2026 ∧ outcome.isna() ∧ (stage~"GROUP" ∨ group≠"")`. Cualquier cambio aquí puede meter partidos históricos en la simulación. |
 | `src/api/main.py` | Carga modelos de disco vía `BaseOutcomeModel.load(...)` con `try/except FileNotFoundError`. Si los pkl no existen, los endpoints siguen respondiendo (degradado a ratings + Poisson). No hagas esto fallar duro. |
 | Tabla canónica `matches_unified.csv` | Única fuente de verdad. Si la corrompes (formato, columnas faltantes, fechas no parseables) **todo el pipeline downstream falla**. Valida con `validate_match_dataframe` antes de persistir. |
+| `src/data/tournament_updater.py::append_results` | Tiene dos modos. Default (`replace_source=False`) = upsert puro por `(date, team_a, team_b)` keep=last; **nunca borra** filas que no estén en el CSV → editar la fecha/equipo de una fila ya ingerida deja una **huérfana** (cambia la llave). `replace_source=True` = purga todas las filas de ese `source` y reingiere (modo "purgar + reingerir"); es el default del path `--manual-csv` en `update_after_matchday.py` para que el CSV sea autoritativo. Tests: `tests/unit/test_tournament_updater.py`. |
+| `src/data/tournament_updater.py::world_cup_state` | Filtra por `date.year == tournament_year` (mete AFCON/amistosos 2026 en los "puntos de Mundial" — limitación conocida, no bug). Coerciona `gf/ga` con `pd.to_numeric(errors="coerce")` y **salta marcadores no numéricos con warning** en vez de tronar (un CSV manual malformado ya no rompe el update). |
 
 ---
 
@@ -430,9 +458,15 @@ como en la API. Cambiar el YAML no tenía efecto.
 
 - **Fix:** `BlendWeights.from_model_params()` / `.from_config()` en `src/ensemble/blender.py`
   (recuerda: `Config.get()` solo lee `config.yaml`/`self.main`; los pesos viven en
-  `model_params` → hay que acceder vía `config.model_params`). Cableado en los **4 call sites**:
+  `model_params` → hay que acceder vía `config.model_params`). Cableado en los call sites:
   `predict_group_stage.py`, `simulate_tournament.py`, `api/main.py` y `export_quiniela_sheet.py`
   (este último se cableó en junio 2026 al integrar A.2; antes seguía con pesos default).
+- **Recaída (2026-06-29):** `predict_knockout.py` era un **5º call site** con el mismo defecto —
+  construía `MatchPredictor` sin `blender` → defaults `BlendWeights()` (multinomial 0.20), ignorando
+  el config. Mezclaba el multinomial degenerado al 20% en el `knockout_predictions.csv` pese al
+  `multinomial: 0.0` de entonces. Arreglado a `from_config`; test de regresión
+  `tests/unit/test_predict_knockout_weights.py`. Lección: **todo** call site de `MatchPredictor` debe
+  pasar `blender=ProbabilityBlender(weights=BlendWeights.from_config(config))`.
   Test: `tests/unit/test_ensemble.py`.
 
 ### Cambios de config evaluados con el backtest (2018+2022)

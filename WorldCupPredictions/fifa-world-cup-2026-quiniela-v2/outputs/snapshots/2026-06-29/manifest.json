@@ -1,0 +1,30 @@
+{
+  "label": "2026-06-29",
+  "created_at": "2026-06-30T04:35:54+00:00",
+  "git_commit": "c52c7fa",
+  "note": "penalty-winner inference added; outputs at 10000 runs",
+  "files_copied": 16,
+  "played_wc_matches": 73,
+  "championship_top5": [
+    {
+      "team": "Argentina",
+      "prob": 0.1658
+    },
+    {
+      "team": "France",
+      "prob": 0.1403
+    },
+    {
+      "team": "Spain",
+      "prob": 0.1066
+    },
+    {
+      "team": "England",
+      "prob": 0.0922
+    },
+    {
+      "team": "Brazil",
+      "prob": 0.0559
+    }
+  ]
+}

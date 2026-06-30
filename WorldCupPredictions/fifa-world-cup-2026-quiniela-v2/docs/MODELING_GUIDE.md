@@ -27,6 +27,12 @@
 ## 5. Multinomial logistic regression
 
 - **Features**: standardised via `StandardScaler`.
+- **Near-constant guard (2026-06-29):** before fitting, features whose single most-frequent training
+  value covers ≥99% of rows are dropped, and standardized values are clipped to ±8 SD. A standardized
+  linear model cannot learn a feature with no training variance, and such a feature is a train/serve
+  hazard: the `stage_group`/`stage_knockout` indicators are constant=0 across the historical training
+  data but 1 for every live knockout fixture, so without the guard `StandardScaler`'s tiny `scale_`
+  turned them into a ~100-SD lever that saturated the softmax. See `docs/AUDIT_2026-06-29.md` §2.
 - **Model**: `LogisticRegression(multi_class="multinomial", solver="lbfgs", C=1.0, class_weight="balanced")`.
 - **Output**: row-normalised probabilities over `{H, D, A}`.
 
@@ -53,15 +59,19 @@
 
 ## 8. Calibration
 
-- **Strategies**: isotonic regression (default) or Platt sigmoid.
+- **Strategies**: Platt **sigmoid (default since 2026-06-29)** or isotonic regression. Set via
+  `config/model_params.yaml::calibration.strategy`, read by `train_models.py`. Switched off isotonic
+  because it overfits the small per-tournament calibration set (a holdout A/B on 64 matches gave
+  log-loss 1.45 vs sigmoid 1.04) and collapses mid-table ties onto identical step values; sigmoid is
+  smooth and far more stable on limited data (Niculescu-Mizil & Caruana 2005).
 - **Approach**: one-vs-rest per class; row-normalisation after transform.
 - **Validation slice**: last full calendar year before the tournament (`validation_year` from `config.yaml`).
 - **Out-of-sample reliability**: `backtester.collect_holdout_predictions(matches, year)` trains the full stack on `< year` and returns `(proba, y_true)` for that tournament, used to draw the leakage-free reliability diagram and ECE in `notebooks/03_model_comparison.ipynb`.
 
 ## 9. Blender
 
-- **Weights** (default): `ratings 0.35, multinomial 0.20, xgboost 0.30, poisson 0.15` (June 2026 — ratings up, the minnow-noisy Poisson down). Read from `config/model_params.yaml::ensemble.weights` via `BlendWeights.from_config()`.
-  - **Note:** weights live in `model_params.yaml`, **not** `config.yaml`; `Config.get()` only reads the latter, so the wiring goes through `config.model_params`. All four entry points (`predict_group_stage`, `simulate_tournament`, `export_quiniela_sheet`, API) pass the configured blender.
+- **Weights**: `ratings 0.35, multinomial 0.20, xgboost 0.30, poisson 0.15` (June 2026 — ratings up, the minnow-noisy Poisson down). Read from `config/model_params.yaml::ensemble.weights` via `BlendWeights.from_config()`. The multinomial weight was temporarily `0.0` during the 2026 knockout phase after a retrain exposed a stage-feature train/serve skew; the bug is now fixed (near-constant guard, §5 above) and the weight was **restored to `0.20`** via a deliberate backtest-gated re-tune on 2026-06-29 (a holdout weight grid put 0.0/0.10/0.20 within fold noise, 0.20 best accuracy). See `docs/AUDIT_2026-06-29.md` §2 and the "Models are frozen" policy in OPERATIONS_RUNBOOK (the matchday loop still never retrains).
+  - **Note:** weights live in `model_params.yaml`, **not** `config.yaml`; `Config.get()` only reads the latter, so the wiring goes through `config.model_params`. **Every** entry point must build its blender with `BlendWeights.from_config()` — `predict_group_stage`, `predict_knockout`, `predict_scorelines`, `simulate_tournament`, `export_quiniela_sheet`, and the API. (`predict_knockout` was the lone exception until 2026-06-29: it used the `BlendWeights()` defaults, silently blending the degenerate multinomial at 0.20 despite the config — fixed, with regression test `tests/unit/test_predict_knockout_weights.py`.)
 - **Operation**: weighted average of probability matrices, re-normalised.
 - Models that aren't fitted (or whose feature columns are absent) are silently skipped.
 

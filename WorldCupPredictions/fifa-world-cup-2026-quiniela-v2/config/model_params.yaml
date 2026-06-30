@@ -35,6 +35,13 @@ models:
 
 calibration:
   enabled: true
+  # Active strategy used by Trainer. Switched isotonic -> sigmoid (Platt) on
+  # 2026-06-29: isotonic overfits the small per-tournament calibration set (a
+  # holdout A/B fit on 64 matches gave log-loss 1.45 vs sigmoid's 1.04) and
+  # collapses several mid-table ties onto identical step values; sigmoid is
+  # smooth (no step-ties) and far more robust on limited data
+  # (Niculescu-Mizil & Caruana 2005). See docs/AUDIT_2026-06-29.md §4/§5.
+  strategy: "sigmoid"
   methods:
     - "isotonic"
     - "sigmoid"
@@ -44,6 +51,15 @@ ensemble:
   method: "weighted_blend"
   weights:
     ratings: 0.35
+    # multinomial restored to the designed 0.20 on 2026-06-29 after a deliberate,
+    # backtest-gated re-tune. The root-cause bug is fixed in code
+    # (src/models/multinomial_model.py drops near-constant training features + clips
+    # standardized values): the stage indicators were identically 0 across the
+    # historical training data but 1 for every live knockout fixture, so the scaler
+    # turned them into a ~100-SD lever that saturated the logistic to ~99% away. The
+    # deployed model was retrained with the fix, so it is healthy. A holdout weight
+    # grid (0.0/0.10/0.20) is within fold noise on log-loss; 0.20 gives the best
+    # accuracy (0.555) and restores the four-model ensemble. The blender renormalises.
     multinomial: 0.20
     xgboost: 0.30
     poisson: 0.15
